@@ -32,10 +32,10 @@
             </div>
             {{ if .form.AIEnabled }}
             <div class="buttons">
-                <a href="{{ route "aiBackfill" }}" class="button button-primary"
+                <a href="{{ routePath "/ai-backfill" }}" class="button button-primary"
                     data-label-loading="{{ t "form.integration.ai_backfill_loading" }}"
                     data-label-default="{{ t "form.integration.ai_backfill" }}">{{ t "form.integration.ai_backfill" }}</a>
-                <a href="{{ route "aiForceBackfill" }}" class="button button-primary"
+                <a href="{{ routePath "/ai-force-backfill" }}" class="button button-primary"
                     data-label-loading="{{ t "form.integration.ai_force_backfill_loading" }}"
                     data-label-default="{{ t "form.integration.ai_force_backfill" }}">{{ t "form.integration.ai_force_backfill" }}</a>
                 <button type="button" class="button button-primary initially-hidden" id="ai-stop-backfill">{{ t "form.integration.ai_stop_backfill" }}</button>
