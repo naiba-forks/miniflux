@@ -115,7 +115,7 @@ integration-test:
 	INTEGRATION_ALLOW_PRIVATE_NETWORKS=1 \
 	go run main.go >/tmp/miniflux.log 2>&1 & echo "$$!" > "/tmp/miniflux.pid"
 
-	while ! nc -z localhost 8080; do sleep 1; done
+	timeout=30; while ! nc -z localhost 8080; do if [ "$$timeout" -le 0 ]; then echo "Miniflux failed to start within 30s"; cat /tmp/miniflux.log; exit 1; fi; timeout=$$((timeout-1)); sleep 1; done
 
 	TEST_MINIFLUX_BASE_URL=http://127.0.0.1:8080 \
 	TEST_MINIFLUX_ADMIN_USERNAME=admin \
