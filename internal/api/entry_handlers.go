@@ -14,7 +14,7 @@ import (
 	"miniflux.app/v2/internal/config"
 	"miniflux.app/v2/internal/crypto"
 	"miniflux.app/v2/internal/http/request"
-	"miniflux.app/v2/internal/http/response/json"
+	"miniflux.app/v2/internal/http/response"
 	"miniflux.app/v2/internal/integration"
 	"miniflux.app/v2/internal/integration/ai"
 	"miniflux.app/v2/internal/mediaproxy"
@@ -29,24 +29,33 @@ import (
 func (h *handler) getEntryFromBuilder(w http.ResponseWriter, r *http.Request, b *storage.EntryQueryBuilder) {
 	entry, err := b.GetEntry()
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if entry == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
-	entry.Content = mediaproxy.RewriteDocumentWithAbsoluteProxyURL(h.router, entry.Content)
-	entry.Enclosures.ProxifyEnclosureURL(h.router, config.Opts.MediaProxyMode(), config.Opts.MediaProxyResourceTypes())
+	entry.Content = mediaproxy.RewriteDocumentWithAbsoluteProxyURL(entry.Content)
+	entry.Enclosures.ProxifyEnclosureURL(config.Opts.MediaProxyMode(), config.Opts.MediaProxyResourceTypes())
 
-	json.OK(w, r, entry)
+	response.JSON(w, r, entry)
 }
 
-func (h *handler) getFeedEntry(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getFeedEntryHandler(w http.ResponseWriter, r *http.Request) {
 	feedID := request.RouteInt64Param(r, "feedID")
+	if feedID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid feed ID"))
+		return
+	}
+
 	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
 
 	builder := h.store.NewEntryQueryBuilder(request.UserID(r))
 	builder.WithFeedID(feedID)
@@ -56,9 +65,18 @@ func (h *handler) getFeedEntry(w http.ResponseWriter, r *http.Request) {
 	h.getEntryFromBuilder(w, r, builder)
 }
 
-func (h *handler) getCategoryEntry(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getCategoryEntryHandler(w http.ResponseWriter, r *http.Request) {
 	categoryID := request.RouteInt64Param(r, "categoryID")
+	if categoryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid category ID"))
+		return
+	}
+
 	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
 
 	builder := h.store.NewEntryQueryBuilder(request.UserID(r))
 	builder.WithCategoryID(categoryID)
@@ -68,8 +86,13 @@ func (h *handler) getCategoryEntry(w http.ResponseWriter, r *http.Request) {
 	h.getEntryFromBuilder(w, r, builder)
 }
 
-func (h *handler) getEntry(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getEntryHandler(w http.ResponseWriter, r *http.Request) {
 	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
+
 	builder := h.store.NewEntryQueryBuilder(request.UserID(r))
 	builder.WithEntryID(entryID)
 	builder.WithoutStatus(model.EntryStatusRemoved)
@@ -77,17 +100,26 @@ func (h *handler) getEntry(w http.ResponseWriter, r *http.Request) {
 	h.getEntryFromBuilder(w, r, builder)
 }
 
-func (h *handler) getFeedEntries(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getFeedEntriesHandler(w http.ResponseWriter, r *http.Request) {
 	feedID := request.RouteInt64Param(r, "feedID")
+	if feedID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid feed ID"))
+		return
+	}
+
 	h.findEntries(w, r, feedID, 0)
 }
 
-func (h *handler) getCategoryEntries(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getCategoryEntriesHandler(w http.ResponseWriter, r *http.Request) {
 	categoryID := request.RouteInt64Param(r, "categoryID")
+	if categoryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid category ID"))
+		return
+	}
 	h.findEntries(w, r, 0, categoryID)
 }
 
-func (h *handler) getEntries(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getEntriesHandler(w http.ResponseWriter, r *http.Request) {
 	h.findEntries(w, r, 0, 0)
 }
 
@@ -95,40 +127,40 @@ func (h *handler) findEntries(w http.ResponseWriter, r *http.Request, feedID int
 	statuses := request.QueryStringParamList(r, "status")
 	for _, status := range statuses {
 		if err := validator.ValidateEntryStatus(status); err != nil {
-			json.BadRequest(w, r, err)
+			response.JSONBadRequest(w, r, err)
 			return
 		}
 	}
 
 	order := request.QueryStringParam(r, "order", model.DefaultSortingOrder)
 	if err := validator.ValidateEntryOrder(order); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	direction := request.QueryStringParam(r, "direction", model.DefaultSortingDirection)
 	if err := validator.ValidateDirection(direction); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	limit := request.QueryIntParam(r, "limit", 100)
 	offset := request.QueryIntParam(r, "offset", 0)
 	if err := validator.ValidateRange(offset, limit); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	userID := request.UserID(r)
 	categoryID = request.QueryInt64Param(r, "category_id", categoryID)
 	if categoryID > 0 && !h.store.CategoryIDExists(userID, categoryID) {
-		json.BadRequest(w, r, errors.New("invalid category ID"))
+		response.JSONBadRequest(w, r, errors.New("invalid category ID"))
 		return
 	}
 
 	feedID = request.QueryInt64Param(r, "feed_id", feedID)
 	if feedID > 0 && !h.store.FeedExists(userID, feedID) {
-		json.BadRequest(w, r, errors.New("invalid feed ID"))
+		response.JSONBadRequest(w, r, errors.New("invalid feed ID"))
 		return
 	}
 
@@ -155,126 +187,134 @@ func (h *handler) findEntries(w http.ResponseWriter, r *http.Request, feedID int
 
 	configureFilters(builder, r)
 
-	entries, err := builder.GetEntries()
+	entries, count, err := builder.GetEntriesWithCount()
 	if err != nil {
-		json.ServerError(w, r, err)
-		return
-	}
-
-	count, err := builder.CountEntries()
-	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	for i := range entries {
-		entries[i].Content = mediaproxy.RewriteDocumentWithAbsoluteProxyURL(h.router, entries[i].Content)
+		entries[i].Content = mediaproxy.RewriteDocumentWithAbsoluteProxyURL(entries[i].Content)
 	}
 
-	json.OK(w, r, &entriesResponse{Total: count, Entries: entries})
+	response.JSON(w, r, &entriesResponse{Total: count, Entries: entries})
 }
 
-func (h *handler) setEntryStatus(w http.ResponseWriter, r *http.Request) {
+func (h *handler) setEntryStatusHandler(w http.ResponseWriter, r *http.Request) {
 	var entriesStatusUpdateRequest model.EntriesStatusUpdateRequest
 	if err := json_parser.NewDecoder(r.Body).Decode(&entriesStatusUpdateRequest); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	if err := validator.ValidateEntriesStatusUpdateRequest(&entriesStatusUpdateRequest); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	if err := h.store.SetEntriesStatus(request.UserID(r), entriesStatusUpdateRequest.EntryIDs, entriesStatusUpdateRequest.Status); err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
-	json.NoContent(w, r)
+	response.NoContent(w, r)
 }
 
-func (h *handler) toggleStarred(w http.ResponseWriter, r *http.Request) {
+func (h *handler) toggleStarredHandler(w http.ResponseWriter, r *http.Request) {
 	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
+
 	if err := h.store.ToggleStarred(request.UserID(r), entryID); err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
-	json.NoContent(w, r)
+	response.NoContent(w, r)
 }
 
-func (h *handler) saveEntry(w http.ResponseWriter, r *http.Request) {
+func (h *handler) saveEntryHandler(w http.ResponseWriter, r *http.Request) {
 	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
+
 	builder := h.store.NewEntryQueryBuilder(request.UserID(r))
 	builder.WithEntryID(entryID)
 	builder.WithoutStatus(model.EntryStatusRemoved)
 
 	if !h.store.HasSaveEntry(request.UserID(r)) {
-		json.BadRequest(w, r, errors.New("no third-party integration enabled"))
+		response.JSONBadRequest(w, r, errors.New("no third-party integration enabled"))
 		return
 	}
 
 	entry, err := builder.GetEntry()
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if entry == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
 	settings, err := h.store.Integration(request.UserID(r))
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	go integration.SendEntry(entry, settings)
 
-	json.Accepted(w, r)
+	response.JSONAccepted(w, r)
 }
 
-func (h *handler) updateEntry(w http.ResponseWriter, r *http.Request) {
+func (h *handler) updateEntryHandler(w http.ResponseWriter, r *http.Request) {
 	var entryUpdateRequest model.EntryUpdateRequest
 	if err := json_parser.NewDecoder(r.Body).Decode(&entryUpdateRequest); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	if err := validator.ValidateEntryModification(&entryUpdateRequest); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
+		return
+	}
+
+	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
 		return
 	}
 
 	loggedUserID := request.UserID(r)
-	entryID := request.RouteInt64Param(r, "entryID")
-
 	entryBuilder := h.store.NewEntryQueryBuilder(loggedUserID)
 	entryBuilder.WithEntryID(entryID)
 	entryBuilder.WithoutStatus(model.EntryStatusRemoved)
 
 	entry, err := entryBuilder.GetEntry()
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if entry == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
 	user, err := h.store.UserByID(loggedUserID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if user == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
@@ -289,35 +329,35 @@ func (h *handler) updateEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.UpdateEntryTitleAndContent(entry); err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
-	json.Created(w, r, entry)
+	response.JSONCreated(w, r, entry)
 }
 
-func (h *handler) importFeedEntry(w http.ResponseWriter, r *http.Request) {
+func (h *handler) importFeedEntryHandler(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
-	feedID := request.RouteInt64Param(r, "feedID")
 
+	feedID := request.RouteInt64Param(r, "feedID")
 	if feedID <= 0 {
-		json.BadRequest(w, r, errors.New("invalid feed ID"))
+		response.JSONBadRequest(w, r, errors.New("invalid feed ID"))
 		return
 	}
 
 	if !h.store.FeedExists(userID, feedID) {
-		json.BadRequest(w, r, errors.New("feed does not exist"))
+		response.JSONBadRequest(w, r, errors.New("feed does not exist"))
 		return
 	}
 
 	var importRequest entryImportRequest
 	if err := json_parser.NewDecoder(r.Body).Decode(&importRequest); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	if importRequest.URL == "" {
-		json.BadRequest(w, r, errors.New("url is required"))
+		response.JSONBadRequest(w, r, errors.New("url is required"))
 		return
 	}
 
@@ -326,7 +366,7 @@ func (h *handler) importFeedEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validator.ValidateEntryStatus(importRequest.Status); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
@@ -356,12 +396,12 @@ func (h *handler) importFeedEntry(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.store.UserByID(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if user == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
@@ -375,34 +415,39 @@ func (h *handler) importFeedEntry(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.store.InsertEntryForFeed(userID, feedID, entry)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if err := h.store.SetEntriesStatus(userID, []int64{entry.ID}, importRequest.Status); err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 	entry.Status = importRequest.Status
 
 	if importRequest.Starred {
 		if err := h.store.SetEntriesStarredState(userID, []int64{entry.ID}, true); err != nil {
-			json.ServerError(w, r, err)
+			response.JSONServerError(w, r, err)
 			return
 		}
 		entry.Starred = true
 	}
 
 	if created {
-		json.Created(w, r, entryIDResponse{ID: entry.ID})
+		response.JSONCreated(w, r, entryIDResponse{ID: entry.ID})
 	} else {
-		json.OK(w, r, entryIDResponse{ID: entry.ID})
+		response.JSON(w, r, entryIDResponse{ID: entry.ID})
 	}
 }
 
-func (h *handler) fetchContent(w http.ResponseWriter, r *http.Request) {
+func (h *handler) fetchContentHandler(w http.ResponseWriter, r *http.Request) {
 	loggedUserID := request.UserID(r)
+
 	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
 
 	entryBuilder := h.store.NewEntryQueryBuilder(loggedUserID)
 	entryBuilder.WithEntryID(entryID)
@@ -410,23 +455,23 @@ func (h *handler) fetchContent(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := entryBuilder.GetEntry()
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if entry == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
 	user, err := h.store.UserByID(loggedUserID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if user == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
@@ -434,35 +479,35 @@ func (h *handler) fetchContent(w http.ResponseWriter, r *http.Request) {
 	feedBuilder.WithFeedID(entry.FeedID)
 	feed, err := feedBuilder.GetFeed()
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if feed == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
 	if err := processor.ProcessEntryWebPage(feed, entry, user); err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	shouldUpdateContent := request.QueryBoolParam(r, "update_content", false)
 	if shouldUpdateContent {
 		if err := h.store.UpdateEntryTitleAndContent(entry); err != nil {
-			json.ServerError(w, r, err)
+			response.JSONServerError(w, r, err)
 			return
 		}
 	}
 
-	json.OK(w, r, entryContentResponse{Content: mediaproxy.RewriteDocumentWithAbsoluteProxyURL(h.router, entry.Content), ReadingTime: entry.ReadingTime})
+	response.JSON(w, r, entryContentResponse{Content: mediaproxy.RewriteDocumentWithAbsoluteProxyURL(entry.Content), ReadingTime: entry.ReadingTime})
 }
 
-func (h *handler) flushHistory(w http.ResponseWriter, r *http.Request) {
+func (h *handler) flushHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	loggedUserID := request.UserID(r)
 	go h.store.FlushHistory(loggedUserID)
-	json.Accepted(w, r)
+	response.JSONAccepted(w, r)
 }
 
 func configureFilters(builder *storage.EntryQueryBuilder, r *http.Request) {
@@ -524,23 +569,23 @@ func (h *handler) summarizeEntry(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := entryBuilder.GetEntry()
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if entry == nil {
-		json.NotFound(w, r)
+		response.JSONNotFound(w, r)
 		return
 	}
 
 	userIntegrations, err := h.store.Integration(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if !userIntegrations.AIEnabled || userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
-		json.BadRequest(w, r, errors.New("AI integration is not configured"))
+		response.JSONBadRequest(w, r, errors.New("AI integration is not configured"))
 		return
 	}
 
@@ -553,13 +598,13 @@ func (h *handler) summarizeEntry(w http.ResponseWriter, r *http.Request) {
 	// Load user language for AI summary generation in the user's preferred language.
 	user, err := h.store.UserByID(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 	// Skip if already summarized — pass existing summary to let client decide
 	result, err := client.SummarizeEntry(entry.Title, entry.Content, entry.AISummary, user.Language)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
@@ -571,12 +616,12 @@ func (h *handler) summarizeEntry(w http.ResponseWriter, r *http.Request) {
 		entry.AISummarizedAt = &now
 
 		if err := h.store.UpdateEntryAISummary(entry); err != nil {
-			json.ServerError(w, r, err)
+			response.JSONServerError(w, r, err)
 			return
 		}
 	}
 
-	json.OK(w, r, entry)
+	response.JSON(w, r, entry)
 }
 
 func (h *handler) backfillAISummaries(w http.ResponseWriter, r *http.Request) {
@@ -584,31 +629,31 @@ func (h *handler) backfillAISummaries(w http.ResponseWriter, r *http.Request) {
 
 	// Return 204 if a backfill is already running for this user — no duplicate work.
 	if integration.IsBackfillRunning(userID) {
-		json.NoContent(w, r)
+		response.NoContent(w, r)
 		return
 	}
 
 	userIntegrations, err := h.store.Integration(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if !userIntegrations.AIEnabled || userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
-		json.BadRequest(w, r, errors.New("AI integration is not configured"))
+		response.JSONBadRequest(w, r, errors.New("AI integration is not configured"))
 		return
 	}
 
 	// Load user language for AI summary generation in the user's preferred language.
 	user, err := h.store.UserByID(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	go integration.BackfillAISummaries(h.store, userID, userIntegrations, user.Language)
 
-	json.Accepted(w, r)
+	response.JSONAccepted(w, r)
 }
 
 func (h *handler) forceBackfillAISummaries(w http.ResponseWriter, r *http.Request) {
@@ -616,31 +661,31 @@ func (h *handler) forceBackfillAISummaries(w http.ResponseWriter, r *http.Reques
 
 	// Return 204 if a backfill is already running for this user — no duplicate work.
 	if integration.IsBackfillRunning(userID) {
-		json.NoContent(w, r)
+		response.NoContent(w, r)
 		return
 	}
 
 	userIntegrations, err := h.store.Integration(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if !userIntegrations.AIEnabled || userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
-		json.BadRequest(w, r, errors.New("AI integration is not configured"))
+		response.JSONBadRequest(w, r, errors.New("AI integration is not configured"))
 		return
 	}
 
 	// Load user language for AI summary generation in the user's preferred language.
 	user, err := h.store.UserByID(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	go integration.ForceBackfillAISummaries(h.store, userID, userIntegrations, user.Language)
 
-	json.Accepted(w, r)
+	response.JSONAccepted(w, r)
 }
 
 // aiPageSummaryRequest holds entry IDs for generating a combined page summary.
@@ -661,30 +706,30 @@ func (h *handler) generateAIPageSummary(w http.ResponseWriter, r *http.Request) 
 
 	var req aiPageSummaryRequest
 	if err := json_parser.NewDecoder(r.Body).Decode(&req); err != nil {
-		json.BadRequest(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	if len(req.EntryIDs) == 0 {
-		json.BadRequest(w, r, errors.New("entry_ids is required"))
+		response.JSONBadRequest(w, r, errors.New("entry_ids is required"))
 		return
 	}
 
 	userIntegrations, err := h.store.Integration(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
 	if !userIntegrations.AIEnabled || userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
-		json.BadRequest(w, r, errors.New("AI integration is not configured"))
+		response.JSONBadRequest(w, r, errors.New("AI integration is not configured"))
 		return
 	}
 
 	// Load user language for AI summary generation in the user's preferred language.
 	user, err := h.store.UserByID(userID)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
@@ -708,7 +753,7 @@ func (h *handler) generateAIPageSummary(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if len(summaryParts) == 0 {
-		json.BadRequest(w, r, errors.New("no entries with AI summaries found"))
+		response.JSONBadRequest(w, r, errors.New("no entries with AI summaries found"))
 		return
 	}
 
@@ -726,11 +771,11 @@ func (h *handler) generateAIPageSummary(w http.ResponseWriter, r *http.Request) 
 
 	result, err := client.GeneratePageSummary(combinedInput, user.Language)
 	if err != nil {
-		json.ServerError(w, r, err)
+		response.JSONServerError(w, r, err)
 		return
 	}
 
-	json.OK(w, r, &aiPageSummaryResponse{
+	response.JSON(w, r, &aiPageSummaryResponse{
 		Summary:  result,
 		EntryIDs: req.EntryIDs,
 	})
@@ -738,11 +783,11 @@ func (h *handler) generateAIPageSummary(w http.ResponseWriter, r *http.Request) 
 
 func (h *handler) getBackfillStatus(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
-	json.OK(w, r, map[string]bool{"running": integration.IsBackfillRunning(userID)})
+	response.JSON(w, r, map[string]bool{"running": integration.IsBackfillRunning(userID)})
 }
 
 func (h *handler) stopBackfill(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
 	integration.StopBackfill(userID)
-	json.NoContent(w, r)
+	response.NoContent(w, r)
 }

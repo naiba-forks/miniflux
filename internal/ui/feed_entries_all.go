@@ -7,8 +7,7 @@ import (
 	"net/http"
 
 	"miniflux.app/v2/internal/http/request"
-	"miniflux.app/v2/internal/http/response/html"
-	"miniflux.app/v2/internal/http/route"
+	"miniflux.app/v2/internal/http/response"
 	"miniflux.app/v2/internal/model"
 	"miniflux.app/v2/internal/ui/session"
 	"miniflux.app/v2/internal/ui/view"
@@ -17,19 +16,19 @@ import (
 func (h *handler) showFeedEntriesAllPage(w http.ResponseWriter, r *http.Request) {
 	user, err := h.store.UserByID(request.UserID(r))
 	if err != nil {
-		html.ServerError(w, r, err)
+		response.HTMLServerError(w, r, err)
 		return
 	}
 
 	feedID := request.RouteInt64Param(r, "feedID")
 	feed, err := h.store.FeedByID(user.ID, feedID)
 	if err != nil {
-		html.ServerError(w, r, err)
+		response.HTMLServerError(w, r, err)
 		return
 	}
 
 	if feed == nil {
-		html.NotFound(w, r)
+		response.HTMLNotFound(w, r)
 		return
 	}
 
@@ -42,15 +41,9 @@ func (h *handler) showFeedEntriesAllPage(w http.ResponseWriter, r *http.Request)
 	builder.WithOffset(offset)
 	builder.WithLimit(user.EntriesPerPage)
 
-	entries, err := builder.GetEntries()
+	entries, count, err := builder.GetEntriesWithCount()
 	if err != nil {
-		html.ServerError(w, r, err)
-		return
-	}
-
-	count, err := builder.CountEntries()
-	if err != nil {
-		html.ServerError(w, r, err)
+		response.HTMLServerError(w, r, err)
 		return
 	}
 
@@ -59,7 +52,7 @@ func (h *handler) showFeedEntriesAllPage(w http.ResponseWriter, r *http.Request)
 	view.Set("feed", feed)
 	view.Set("entries", entries)
 	view.Set("total", count)
-	view.Set("pagination", getPagination(route.Path(h.router, "feedEntriesAll", "feedID", feed.ID), count, offset, user.EntriesPerPage))
+	view.Set("pagination", getPagination(h.routePath("/feed/%d/entries/all", feed.ID), count, offset, user.EntriesPerPage))
 	view.Set("menu", "feeds")
 	view.Set("user", user)
 	view.Set("countUnread", h.store.CountUnreadEntries(user.ID))
@@ -69,5 +62,5 @@ func (h *handler) showFeedEntriesAllPage(w http.ResponseWriter, r *http.Request)
 	view.Set("hasSaveEntry", h.store.HasSaveEntry(user.ID))
 	view.Set("showOnlyUnreadEntries", false)
 
-	html.OK(w, r, view.Render("feed_entries"))
+	response.HTML(w, r, view.Render("feed_entries"))
 }
