@@ -14,12 +14,13 @@ import (
 )
 
 func runCleanupTasks(store *storage.Storage) {
-	nbSessions := store.CleanOldSessions(config.Opts.CleanupRemoveSessionsInterval())
-	nbUserSessions := store.CleanOldUserSessions(config.Opts.CleanupRemoveSessionsInterval())
-	slog.Info("Sessions cleanup completed",
-		slog.Int64("application_sessions_removed", nbSessions),
-		slog.Int64("user_sessions_removed", nbUserSessions),
-	)
+	if nbWebSessions, err := store.CleanOldWebSessions(config.Opts.CleanupRemoveSessionsInterval()); err != nil {
+		slog.Error("Unable to clean old web sessions", slog.Any("error", err))
+	} else {
+		slog.Info("Sessions cleanup completed",
+			slog.Int64("web_sessions_removed", nbWebSessions),
+		)
+	}
 
 	startTime := time.Now()
 	if rowsAffected, err := store.ArchiveEntries(model.EntryStatusRead, config.Opts.CleanupArchiveReadInterval(), config.Opts.CleanupArchiveBatchSize()); err != nil {
@@ -45,19 +46,5 @@ func runCleanupTasks(store *storage.Storage) {
 		if config.Opts.HasMetricsCollector() {
 			metric.ArchiveEntriesDuration.WithLabelValues(model.EntryStatusUnread).Observe(time.Since(startTime).Seconds())
 		}
-	}
-
-	if enclosuresAffected, err := store.DeleteEnclosuresOfRemovedEntries(); err != nil {
-		slog.Error("Unable to delete enclosures from removed entries", slog.Any("error", err))
-	} else {
-		slog.Info("Deleting enclosures from removed entries completed",
-			slog.Int64("removed_entries_enclosures_deleted", enclosuresAffected))
-	}
-
-	if contentAffected, err := store.ClearRemovedEntriesContent(config.Opts.CleanupArchiveBatchSize()); err != nil {
-		slog.Error("Unable to clear content from removed entries", slog.Any("error", err))
-	} else {
-		slog.Info("Clearing content from removed entries completed",
-			slog.Int64("removed_entries_content_cleared", contentAffected))
 	}
 }

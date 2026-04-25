@@ -1501,4 +1501,69 @@ var migrations = [...]func(tx *sql.Tx) error{
 		_, err = tx.Exec(`ALTER TABLE feeds ADD COLUMN use_js_render bool NOT NULL DEFAULT false`)
 		return err
 	},
+	func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec(`
+			DROP TABLE IF EXISTS sessions;
+			DROP TABLE IF EXISTS user_sessions;
+
+			CREATE TABLE web_sessions (
+				id text not null,
+				secret_hash bytea not null,
+				user_id int references users(id) on delete cascade,
+				created_at timestamp with time zone not null default now(),
+				user_agent text not null default '',
+				ip inet,
+				state jsonb not null default '{}'::jsonb,
+				primary key (id),
+				check (jsonb_typeof(state) = 'object')
+			);
+
+			CREATE INDEX web_sessions_user_id_idx
+				ON web_sessions (user_id)
+				WHERE user_id IS NOT NULL;
+
+			CREATE INDEX web_sessions_created_at_idx
+				ON web_sessions (created_at);
+		`)
+		return err
+	},
+	func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec(`
+			CREATE TABLE entry_tombstones (
+				feed_id bigint not null references feeds(id) on delete cascade,
+				hash text not null check (hash <> ''),
+				deleted_at timestamp with time zone not null default now(),
+				primary key (feed_id, hash)
+			);
+
+			CREATE INDEX entry_tombstones_deleted_at_idx
+				ON entry_tombstones (deleted_at);
+
+			INSERT INTO entry_tombstones (feed_id, hash, deleted_at)
+				SELECT feed_id, hash, changed_at
+				FROM entries
+				WHERE status = 'removed' AND hash <> ''
+				ON CONFLICT (feed_id, hash) DO NOTHING;
+
+			DELETE FROM entries WHERE status = 'removed';
+
+			-- The "removed" status is no longer used, so drop the partial
+			-- predicate so the planner can use the index for every search.
+			DROP INDEX document_vectors_idx;
+			CREATE INDEX document_vectors_idx
+				ON entries
+				USING gin(document_vectors);
+		`)
+		return err
+	},
+	func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec(`
+			DELETE FROM integrations WHERE user_id NOT IN (SELECT id FROM users);
+
+			ALTER TABLE integrations
+				ADD CONSTRAINT integrations_user_id_fkey
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+		`)
+		return err
+	},
 }

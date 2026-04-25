@@ -9,7 +9,6 @@ import (
 	"miniflux.app/v2/internal/http/request"
 	"miniflux.app/v2/internal/http/response"
 	"miniflux.app/v2/internal/model"
-	"miniflux.app/v2/internal/ui/session"
 	"miniflux.app/v2/internal/ui/view"
 )
 
@@ -33,7 +32,7 @@ func (h *handler) showSearchPage(w http.ResponseWriter, r *http.Request) {
 		if unreadOnly {
 			builder.WithStatus(model.EntryStatusUnread)
 		}
-		builder.WithoutStatus(model.EntryStatusRemoved)
+		builder.WithoutContent()
 		builder.WithOffset(offset)
 		builder.WithLimit(user.EntriesPerPage)
 
@@ -44,8 +43,7 @@ func (h *handler) showSearchPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sess := session.New(h.store, request.SessionID(r))
-	view := view.New(h.tpl, r, sess)
+	view := view.New(h.tpl, r)
 	pagination := getPagination(h.routePath("/search"), entriesCount, offset, user.EntriesPerPage)
 	pagination.SearchQuery = searchQuery
 	pagination.UnreadOnly = unreadOnly

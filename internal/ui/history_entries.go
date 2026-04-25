@@ -9,7 +9,6 @@ import (
 	"miniflux.app/v2/internal/http/request"
 	"miniflux.app/v2/internal/http/response"
 	"miniflux.app/v2/internal/model"
-	"miniflux.app/v2/internal/ui/session"
 	"miniflux.app/v2/internal/ui/view"
 )
 
@@ -25,6 +24,7 @@ func (h *handler) showHistoryPage(w http.ResponseWriter, r *http.Request) {
 	builder.WithStatus(model.EntryStatusRead)
 	builder.WithSorting("changed_at", "DESC")
 	builder.WithSorting("published_at", "DESC")
+	builder.WithoutContent()
 	builder.WithOffset(offset)
 	builder.WithLimit(user.EntriesPerPage)
 
@@ -34,8 +34,7 @@ func (h *handler) showHistoryPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := session.New(h.store, request.SessionID(r))
-	view := view.New(h.tpl, r, sess)
+	view := view.New(h.tpl, r)
 	view.Set("entries", entries)
 	view.Set("total", count)
 	view.Set("pagination", getPagination(h.routePath("/history"), count, offset, user.EntriesPerPage))

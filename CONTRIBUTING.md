@@ -9,7 +9,7 @@ Fork-specific contributions (AI summary, web scraper, Lightpanda JS rendering) a
 ### Requirements
 
 - **Git**
-- **Go >= 1.24**
+- **Go >= 1.26**
 - **PostgreSQL**
 - **Node.js >= 18** (for Defuddle content extraction in JS rendering)
 - **Lightpanda** binary (optional, for JS rendering tests)
