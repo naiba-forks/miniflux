@@ -20,9 +20,25 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+	rodutils "github.com/go-rod/rod/lib/utils"
 
 	"miniflux.app/v2/internal/config"
 )
+
+// go-rod's WebSocket reader (lib/cdp/websocket.go) ignores the frame opcode and
+// returns the raw payload of any frame to the consumer. When Lightpanda closes
+// the WebSocket cleanly, the close-frame payload starts with a big-endian uint16
+// status code (e.g. 0x03 0xe8 = 1000 "normal closure"); go-rod's consumeMessages
+// goroutine then tries json.Unmarshal on those bytes, fails, and calls
+// rodutils.E(err) which panics. Because the panic is in a goroutine spawned by
+// cdp.Client.Start, no caller-side recover() can catch it and the entire miniflux
+// process is killed. Replacing rodutils.Panic with a logging-only stub neutralises
+// this panic; the next ws.Read() will return EOF and consumeMessages exits normally.
+func init() {
+	rodutils.Panic = func(v any) {
+		slog.Warn("headless: suppressed go-rod panic from CDP consumer", slog.Any("value", v))
+	}
+}
 
 const (
 	// cdpConnectTimeout is how long we wait for the Lightpanda CDP server to
