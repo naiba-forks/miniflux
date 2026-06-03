@@ -27,7 +27,7 @@ Fork Features
 - Ultra-low memory footprint (9x less than Chrome) with instant startup.
 - Two-stage content extraction: Lightpanda renders the page, then [Defuddle](https://github.com/kepano/defuddle) extracts the article content server-side.
 - Works with both RSS feeds (fetch original content) and Web Scraper feeds (render listing pages + article detail pages).
-- Per-feed proxy support (`--http_proxy`) with automatic fallback to standard HTTP fetching on failure.
+- Per-feed proxy support (`--http_proxy`); render failures are surfaced instead of falling back to standard HTTP fetching.
 
 Upstream Features
 -----------------

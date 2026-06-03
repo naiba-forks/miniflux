@@ -50,7 +50,7 @@ func (s *Storage) CountAllEntries() (map[string]int64, error) {
 // CountUnreadEntries returns the number of unread entries.
 func (s *Storage) CountUnreadEntries(userID int64) int {
 	builder := s.NewEntryQueryBuilder(userID)
-	builder.WithStatus(model.EntryStatusUnread)
+	builder.WithStatuses(model.EntryStatusUnread)
 	builder.WithGloballyVisible()
 
 	n, err := builder.CountEntries()
@@ -69,7 +69,7 @@ func (s *Storage) CountUnreadEntries(userID int64) int {
 // Used for the AI Digest navigation counter.
 func (s *Storage) CountUnreadAIDigestEntries(userID int64) int {
 	builder := s.NewEntryQueryBuilder(userID)
-	builder.WithStatus(model.EntryStatusUnread)
+	builder.WithStatuses(model.EntryStatusUnread)
 	builder.WithMinAIScore(1)
 
 	n, err := builder.CountEntries()
@@ -94,11 +94,6 @@ func (s *Storage) IsAIEnabled(userID int64) bool {
 		return false
 	}
 	return enabled
-}
-
-// NewEntryQueryBuilder returns a new EntryQueryBuilder
-func (s *Storage) NewEntryQueryBuilder(userID int64) *EntryQueryBuilder {
-	return NewEntryQueryBuilder(s, userID)
 }
 
 // UpdateEntryTitleAndContent updates entry title and content.
@@ -324,7 +319,7 @@ func (s *Storage) getEntryIDByHash(tx *sql.Tx, feedID int64, entryHash string) (
 		entryHash,
 	).Scan(&entryID)
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {

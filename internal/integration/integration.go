@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"miniflux.app/v2/internal/integration/apprise"
 	"miniflux.app/v2/internal/integration/ai"
+	"miniflux.app/v2/internal/integration/apprise"
 	"miniflux.app/v2/internal/integration/archiveorg"
 	"miniflux.app/v2/internal/integration/betula"
 	"miniflux.app/v2/internal/integration/cubox"
@@ -853,7 +853,7 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 		)
 
 		entryBuilder := store.NewEntryQueryBuilder(userID)
-		entryBuilder.WithStatus(model.EntryStatusUnread)
+		entryBuilder.WithStatuses(model.EntryStatusUnread)
 		entryBuilder.WithoutAISummary()
 		entryBuilder.WithSorting("published_at", "desc")
 		entryBuilder.WithLimit(batchSize)
@@ -975,7 +975,7 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 
 		// No WithoutAISummary() — we want ALL unread entries, including already summarized ones.
 		entryBuilder := store.NewEntryQueryBuilder(userID)
-		entryBuilder.WithStatus(model.EntryStatusUnread)
+		entryBuilder.WithStatuses(model.EntryStatusUnread)
 		entryBuilder.WithSorting("published_at", "desc")
 		entryBuilder.WithOffset(totalProcessed)
 		entryBuilder.WithLimit(batchSize)

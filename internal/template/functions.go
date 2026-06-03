@@ -20,17 +20,24 @@ import (
 	"miniflux.app/v2/internal/locale"
 	"miniflux.app/v2/internal/mediaproxy"
 	"miniflux.app/v2/internal/model"
+	"miniflux.app/v2/internal/reader/sanitizer"
 	"miniflux.app/v2/internal/timezone"
 	"miniflux.app/v2/internal/ui/static"
 	"miniflux.app/v2/internal/urllib"
 )
 
 type funcMap struct {
-	basePath string
+	basePath  string
+	iconPaths map[string]string
 }
 
 // Map returns a map of template functions that are compiled during template parsing.
 func (f *funcMap) Map() template.FuncMap {
+	// Pre-compute every icon URL once, as iconPath is called a lot during pages rendering.
+	f.iconPaths = make(map[string]string, len(static.BinaryBundles))
+	for filename, bundle := range static.BinaryBundles {
+		f.iconPaths[filename] = f.basePath + "/icon/" + bundle.Checksum + "/" + filename
+	}
 	return template.FuncMap{
 		"contains":         strings.Contains,
 		"csp":              csp,
@@ -56,9 +63,7 @@ func (f *funcMap) Map() template.FuncMap {
 			}
 			return f.basePath + format
 		},
-		"safeURL": func(url string) template.URL {
-			return template.URL(url)
-		},
+		"untrustedURL": untrustedURL,
 		"safeCSS": func(str string) template.CSS {
 			return template.CSS(str)
 		},
@@ -90,13 +95,7 @@ func (f *funcMap) Map() template.FuncMap {
 		},
 		"theme_color": model.ThemeColor,
 		"iconPath":    f.iconPath,
-		"icon": func(iconName string) template.HTML {
-			return template.HTML(fmt.Sprintf(
-				`<svg class="icon" aria-hidden="true"><use href="%s#icon-%s"/></svg>`,
-				f.iconPath("sprite.svg"),
-				iconName,
-			))
-		},
+		"icon":        f.iconFunc(),
 		"nonce": func() string {
 			return crypto.GenerateRandomStringHex(16)
 		},
@@ -162,10 +161,18 @@ func (f *funcMap) Map() template.FuncMap {
 }
 
 func (f *funcMap) iconPath(filename string) string {
-	if bundle, ok := static.BinaryBundles[filename]; ok {
-		return fmt.Sprintf("%s/icon/%s/%s", f.basePath, bundle.Checksum, filename)
+	return f.iconPaths[filename]
+}
+
+func (f *funcMap) iconFunc() func(string) template.HTML {
+	// Concatenation is used instead of fmt.Sprintf,
+	// as it's much faster, and this function is called
+	// a bunch of times per feed item on the main page.
+	prefix := `<svg class="icon" aria-hidden="true"><use href="` + f.iconPath("sprite.svg") + `#icon-`
+	const suffix = `"/></svg>`
+	return func(iconName string) template.HTML {
+		return template.HTML(prefix + iconName + suffix)
 	}
-	return fmt.Sprintf("%s/icon/_/%s", f.basePath, filename)
 }
 
 func csp(user *model.User, nonce string) string {
@@ -240,6 +247,20 @@ func truncate(str string, max int) string {
 func isEmail(str string) bool {
 	_, err := mail.ParseAddress(str)
 	return err == nil
+}
+
+// untrustedURL validates a feed-supplied URL against the sanitizer's scheme
+// allowlist before exposing it to html/template. Returns "#" for unsafe URLs
+// (e.g. javascript:, data:) so anchors render as inert links.
+//
+// Go's built-in html/template URL filter only allows http(s), mailto, and
+// relative URLs — too narrow for feeds which legitimately use schemes like
+// magnet:, feed:, webcal:, and tel:.
+func untrustedURL(rawURL string) template.URL {
+	if !sanitizer.HasValidURIScheme(rawURL) {
+		return template.URL("#")
+	}
+	return template.URL(rawURL)
 }
 
 // Returns the duration in human readable format (hours and minutes).

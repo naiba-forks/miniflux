@@ -123,7 +123,7 @@ func (h *handler) aiPageSummary(w http.ResponseWriter, r *http.Request) {
 	var summaryParts []string
 	for _, entryID := range req.EntryIDs {
 		builder := h.store.NewEntryQueryBuilder(userID)
-		builder.WithEntryID(entryID)
+		builder.WithEntryIDs(entryID)
 		entry, entryErr := builder.GetEntry()
 		if entryErr != nil || entry == nil {
 			continue

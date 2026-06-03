@@ -95,7 +95,7 @@ func processUserEntries(store *storage.Storage, user *model.User, integration *m
 	)
 
 	entryBuilder := store.NewEntryQueryBuilder(user.ID)
-	entryBuilder.WithStatus(model.EntryStatusUnread)
+	entryBuilder.WithStatuses(model.EntryStatusUnread)
 	entryBuilder.WithoutAISummary()
 	entryBuilder.WithSorting("published_at", "desc")
 	entryBuilder.WithLimit(aiWorkerBatchSize)

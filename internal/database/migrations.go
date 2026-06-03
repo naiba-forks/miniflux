@@ -5,6 +5,7 @@ package database // import "miniflux.app/v2/internal/database"
 
 import (
 	"database/sql"
+	"errors"
 
 	"miniflux.app/v2/internal/crypto"
 )
@@ -483,7 +484,7 @@ var migrations = [...]func(tx *sql.Tx) error{
 			)
 
 			if err := tx.QueryRow(`FETCH NEXT FROM my_cursor`).Scan(&userID, &customStylesheet, &googleID, &oidcID); err != nil {
-				if err == sql.ErrNoRows {
+				if errors.Is(err, sql.ErrNoRows) {
 					break
 				}
 				return err
@@ -1081,7 +1082,7 @@ var migrations = [...]func(tx *sql.Tx) error{
 			var id int64
 
 			if err := tx.QueryRow(`FETCH NEXT FROM id_cursor`).Scan(&id); err != nil {
-				if err == sql.ErrNoRows {
+				if errors.Is(err, sql.ErrNoRows) {
 					break
 				}
 				return err
@@ -1563,6 +1564,34 @@ var migrations = [...]func(tx *sql.Tx) error{
 			ALTER TABLE integrations
 				ADD CONSTRAINT integrations_user_id_fkey
 				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+		`)
+		return err
+	},
+	func(tx *sql.Tx) (err error) {
+		// backup_eligible is nullable: NULL marks pre-migration rows so the login path can backfill it from the assertion on first use.
+		_, err = tx.Exec(`
+			UPDATE webauthn_credentials SET name = '' WHERE name IS NULL;
+
+			ALTER TABLE webauthn_credentials
+				ALTER COLUMN name SET DEFAULT '',
+				ALTER COLUMN name SET NOT NULL,
+				ADD COLUMN backup_eligible boolean,
+				ADD COLUMN backup_state boolean NOT NULL DEFAULT false;
+		`)
+		return err
+	},
+	func(tx *sql.Tx) (err error) {
+		// entries_feed_idx is redundant: the unique constraint
+		// entries_feed_id_hash_key(feed_id, hash) and the explicit
+		// entries_feed_id_status_hash_idx(feed_id, status, hash) both
+		// cover feed_id-leading lookups, including FK cascade deletes.
+		//
+		// entries_user_status_idx is redundant: five three-column indexes
+		// share the same (user_id, status) prefix and serve every query
+		// that the two-column index could.
+		_, err = tx.Exec(`
+			DROP INDEX IF EXISTS entries_feed_idx;
+			DROP INDEX IF EXISTS entries_user_status_idx;
 		`)
 		return err
 	},

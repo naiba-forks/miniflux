@@ -22,7 +22,7 @@ func (h *handler) showAIDigestPage(w http.ResponseWriter, r *http.Request) {
 	offset := request.QueryIntParam(r, "offset", 0)
 
 	countBuilder := h.store.NewEntryQueryBuilder(user.ID)
-	countBuilder.WithStatus(model.EntryStatusUnread)
+	countBuilder.WithStatuses(model.EntryStatusUnread)
 	countBuilder.WithMinAIScore(1)
 	total, err := countBuilder.CountEntries()
 	if err != nil {
@@ -35,7 +35,7 @@ func (h *handler) showAIDigestPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	builder := h.store.NewEntryQueryBuilder(user.ID)
-	builder.WithStatus(model.EntryStatusUnread)
+	builder.WithStatuses(model.EntryStatusUnread)
 	builder.WithMinAIScore(1)
 	builder.WithSorting("ai_score", "DESC")
 	builder.WithSorting("id", "DESC")
@@ -54,11 +54,12 @@ func (h *handler) showAIDigestPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("pagination", getPagination(h.routePath("/unread"), total, offset, user.EntriesPerPage))
 	view.Set("menu", "unread")
 	view.Set("user", user)
-	view.Set("countUnread", h.store.CountUnreadEntries(user.ID))
-	view.Set("countErrorFeeds", h.store.CountUserFeedsWithErrors(user.ID))
-	view.Set("showAIDigest", h.store.IsAIEnabled(user.ID))
+	navMetadata, _ := h.store.GetNavMetadata(user.ID)
+	view.Set("countUnread", navMetadata.CountUnread)
+	view.Set("countErrorFeeds", navMetadata.CountErrorFeeds)
+	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", total)
-	view.Set("hasSaveEntry", h.store.HasSaveEntry(user.ID))
+	view.Set("hasSaveEntry", navMetadata.HasSaveEntry)
 
 	response.HTML(w, r, view.Render("ai_digest"))
 }

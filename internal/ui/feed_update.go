@@ -48,10 +48,12 @@ func (h *handler) updateFeed(w http.ResponseWriter, r *http.Request) {
 	view.Set("feed", feed)
 	view.Set("menu", "feeds")
 	view.Set("user", loggedUser)
-	view.Set("countUnread", h.store.CountUnreadEntries(loggedUser.ID))
-	view.Set("countErrorFeeds", h.store.CountUserFeedsWithErrors(loggedUser.ID))
-	view.Set("showAIDigest", h.store.IsAIEnabled(loggedUser.ID))
-	view.Set("countAIDigest", h.store.CountUnreadAIDigestEntries(loggedUser.ID))
+
+	navMetadata, _ := h.store.GetNavMetadata(loggedUser.ID)
+	view.Set("countUnread", navMetadata.CountUnread)
+	view.Set("countErrorFeeds", navMetadata.CountErrorFeeds)
+	view.Set("showAIDigest", navMetadata.ShowAIDigest)
+	view.Set("countAIDigest", navMetadata.CountAIDigest)
 	view.Set("defaultUserAgent", config.Opts.HTTPClientUserAgent())
 
 	feedModificationRequest := &model.FeedModificationRequest{
