@@ -59,17 +59,17 @@ func (h *handler) submitSubscription(w http.ResponseWriter, r *http.Request) {
 		rssBridgeToken = intg.RSSBridgeToken
 	}
 
-	requestBuilder := fetcher.NewRequestBuilder()
-	requestBuilder.WithTimeout(config.Opts.HTTPClientTimeout())
-	requestBuilder.WithProxyRotator(proxyrotator.ProxyRotatorInstance)
-	requestBuilder.WithCustomFeedProxyURL(subscriptionForm.ProxyURL)
-	requestBuilder.WithCustomApplicationProxyURL(config.Opts.HTTPClientProxyURL())
-	requestBuilder.UseCustomApplicationProxyURL(subscriptionForm.FetchViaProxy)
-	requestBuilder.WithUserAgent(subscriptionForm.UserAgent, config.Opts.HTTPClientUserAgent())
-	requestBuilder.WithCookie(subscriptionForm.Cookie)
-	requestBuilder.WithUsernameAndPassword(subscriptionForm.Username, subscriptionForm.Password)
-	requestBuilder.IgnoreTLSErrors(subscriptionForm.AllowSelfSignedCertificates)
-	requestBuilder.DisableHTTP2(subscriptionForm.DisableHTTP2)
+	requestBuilder := fetcher.NewRequestBuilder().
+		WithTimeout(config.Opts.HTTPClientTimeout()).
+		WithProxyRotator(proxyrotator.ProxyRotatorInstance).
+		WithCustomFeedProxyURL(subscriptionForm.ProxyURL).
+		WithCustomApplicationProxyURL(config.Opts.HTTPClientProxyURL()).
+		UseCustomApplicationProxyURL(subscriptionForm.FetchViaProxy).
+		WithUserAgent(subscriptionForm.UserAgent, config.Opts.HTTPClientUserAgent()).
+		WithCookie(subscriptionForm.Cookie).
+		WithUsernameAndPassword(subscriptionForm.Username, subscriptionForm.Password).
+		IgnoreTLSErrors(subscriptionForm.AllowSelfSignedCertificates).
+		DisableHTTP2(subscriptionForm.DisableHTTP2)
 
 	// Web scraper feeds bypass subscription discovery — the URL is used directly as the feed source.
 	if subscriptionForm.FeedSourceType == "web_scraper" {
