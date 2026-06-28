@@ -97,10 +97,10 @@ func ProcessFeedEntries(store *storage.Storage, feed *model.Feed, userID int64, 
 		entryIsNew := store.IsNewEntry(feed.ID, entry.Hash)
 		contentExtractedSuccessfully := false
 		// For web_scraper feeds, UseJSRender also triggers full content fetching
-		// via Lightpanda headless browser, even when Crawler is not explicitly
+		// via Obscura headless browser, even when Crawler is not explicitly
 		// enabled. The web scraper's listing page only provides summaries; JS
 		// rendering each entry's detail page extracts the full article content.
-		shouldFetchContent := feed.Crawler || (feed.FeedSourceType == "web_scraper" && feed.UseJSRender && config.Opts.LightpandaEnabled())
+		shouldFetchContent := feed.Crawler || (feed.FeedSourceType == "web_scraper" && feed.UseJSRender && config.Opts.ObscuraEnabled())
 		if shouldFetchContent && (entryIsNew || forceRefresh) {
 			slog.Debug("Scraping entry",
 				slog.Int64("user_id", user.ID),
@@ -113,11 +113,11 @@ func ProcessFeedEntries(store *storage.Storage, feed *model.Feed, userID int64, 
 				slog.Bool("force_refresh", forceRefresh),
 			)
 
-			// Use Lightpanda headless JS rendering when enabled for this feed.
+			// Use Obscura headless JS rendering when enabled for this feed.
 			// Don't fallback to HTTP scraper — it would hit the same network
 			// issues and mask the real headless rendering error.
-			if feed.UseJSRender && config.Opts.LightpandaEnabled() {
-				slog.Debug("Rendering entry with Lightpanda headless browser",
+			if feed.UseJSRender && config.Opts.ObscuraEnabled() {
+				slog.Debug("Rendering entry with Obscura headless browser",
 					slog.Int64("user_id", user.ID),
 					slog.String("entry_url", entry.URL),
 					slog.Int64("feed_id", feed.ID),
@@ -141,7 +141,7 @@ func ProcessFeedEntries(store *storage.Storage, feed *model.Feed, userID int64, 
 				}
 			}
 
-			if !contentExtractedSuccessfully && !(feed.UseJSRender && config.Opts.LightpandaEnabled()) {
+			if !contentExtractedSuccessfully && !(feed.UseJSRender && config.Opts.ObscuraEnabled()) {
 				startTime := time.Now()
 
 				scrapedPageBaseURL, extractedContent, scraperErr := scraper.ScrapeWebsite(
@@ -233,10 +233,10 @@ func ProcessEntryWebPage(feed *model.Feed, entry *model.Entry, user *model.User)
 	var extractedContent string
 	var scraperErr error
 
-	useHeadless := feed.UseJSRender && config.Opts.LightpandaEnabled()
+	useHeadless := feed.UseJSRender && config.Opts.ObscuraEnabled()
 
 	if useHeadless {
-		slog.Debug("Rendering entry with Lightpanda headless browser",
+		slog.Debug("Rendering entry with Obscura headless browser",
 			slog.String("entry_url", entry.URL),
 			slog.Int64("feed_id", feed.ID),
 		)
@@ -287,7 +287,7 @@ func ProcessEntryWebPage(feed *model.Feed, entry *model.Entry, user *model.User)
 }
 
 // ResolveProxyURLForHeadless determines the proxy URL to use when rendering a
-// page via Lightpanda headless browser. The priority matches the fetcher's
+// page via Obscura headless browser. The priority matches the fetcher's
 // RequestBuilder logic (request_builder.go):
 //   - feed-level proxy_url (highest)
 //   - application-level HTTP_CLIENT_PROXY (when FetchViaProxy is enabled)
