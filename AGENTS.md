@@ -10,15 +10,15 @@
 ### 2. Web Scraper 引擎 (`internal/reader/webscraper/`)
 - `mergeURL`：相对 URL 解析必须用 `url.ResolveReference()`（RFC 3986），手写拼接会把 `archives.html/blog/x.html` 当目录
 
-### 3. Lightpanda 无头浏览器 JS 渲染 (`internal/reader/headless/`)
-- 架构：go-rod (CDP 客户端) + Lightpanda (Zig 编写, V8 引擎, 非 Chromium 轻量 headless browser)
-- 两阶段内容提取：Lightpanda 渲染页面取 outerHTML → node 子进程 Defuddle (Readability 替代) 提取正文
-  - Defuddle 不能直接在 Lightpanda 内运行（缺 `getComputedStyle` 等 API 会导致进程 crash）
+### 3. Obscura 无头浏览器 JS 渲染 (`internal/reader/headless/`)
+- 架构：go-rod (CDP 客户端) + Obscura (Rust/V8 轻量 headless browser)
+- 两阶段内容提取：Obscura 渲染页面取 outerHTML → node 子进程 Defuddle (Readability 替代) 提取正文
+  - Defuddle 通过 node 子进程运行，浏览器只负责 JS 渲染和 DOM 输出
   - Defuddle 在 Docker 构建时从 GitHub clone 即时 build，产物安装到 `/usr/share/miniflux/defuddle/`
   - Go 代码通过 `node -e` 内联脚本调用，30 秒超时，失败 fallback 到 `innerText`
 - 资源回收：`activeProcessCount` 原子计数，`browser.Close()` 加 `recover()` 防 crash 后 panic
 - 不 fallback：JS 渲染启用时，headless 失败不会 fallback 到 HTTP scraper（避免掩盖真实错误），与 `handler.go` 列表页逻辑一致
-- RSS feed：`processor.go` 中 `UseJSRender && LightpandaEnabled` 时用 headless，失败直接跳过不 fallback
+- RSS feed：`processor.go` 中 `UseJSRender && ObscuraEnabled` 时用 headless，失败直接跳过不 fallback
 - Web Scraper feed：`handler.go` 中列表页渲染用 `RenderPageHTML` + `ScrapeRenderedHTML`；条目全文在 `processor.go` 中同样走 headless 不 fallback
 
 ## CI/CD

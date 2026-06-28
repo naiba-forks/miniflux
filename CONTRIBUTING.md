@@ -2,7 +2,7 @@
 
 MinifluxNg is a fork of [Miniflux](https://github.com/miniflux/v2). Contributions that belong to upstream (bug fixes, core improvements) should go to the upstream project first.
 
-Fork-specific contributions (AI summary, web scraper, Lightpanda JS rendering) are welcome here.
+Fork-specific contributions (AI summary, web scraper, Obscura JS rendering) are welcome here.
 
 ## Development Setup
 
@@ -12,7 +12,7 @@ Fork-specific contributions (AI summary, web scraper, Lightpanda JS rendering) a
 - **Go >= 1.26**
 - **PostgreSQL**
 - **Node.js >= 18** (for Defuddle content extraction in JS rendering)
-- **Lightpanda** binary (optional, for JS rendering tests)
+- **Obscura** binary (optional, for JS rendering tests)
 
 ### Getting Started
 

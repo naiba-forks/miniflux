@@ -211,7 +211,7 @@
     "form.feed.label.site_url": "사이트 URL",
     "form.feed.label.title": "제목",
     "form.feed.label.urlrewrite_rules": "URL 재작성 규칙",
-    "form.feed.label.use_js_render": "JavaScript 렌더링 활성화(Lightpanda 필요)",
+    "form.feed.label.use_js_render": "JavaScript 렌더링 활성화(Obscura 필요)",
     "form.feed.label.user_agent": "기본 User Agent 덮어쓰기",
     "form.feed.label.web_scraper": "Web Scraper",
     "form.feed.label.webhook_url": "Webhook URL 덮어쓰기",

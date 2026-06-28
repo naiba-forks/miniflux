@@ -21,13 +21,13 @@ Fork Features
 - Pagination support for both HTML (regex) and JSON (gjson path) sources.
 - Feed source type selector: choose between RSS/Atom/JSON Feed or Web Scraper per subscription.
 
-### JavaScript Rendering (Lightpanda)
+### JavaScript Rendering (Obscura)
 
-- Optional headless browser rendering via [Lightpanda](https://lightpanda.io) for JavaScript-heavy websites.
-- Ultra-low memory footprint (9x less than Chrome) with instant startup.
-- Two-stage content extraction: Lightpanda renders the page, then [Defuddle](https://github.com/kepano/defuddle) extracts the article content server-side.
+- Optional stealth headless browser rendering via [Obscura](https://github.com/h4ckf0r0day/obscura) for JavaScript-heavy websites.
+- Lightweight V8-based rendering with Chrome DevTools Protocol automation.
+- Two-stage content extraction: Obscura renders the page, then [Defuddle](https://github.com/kepano/defuddle) extracts the article content server-side.
 - Works with both RSS feeds (fetch original content) and Web Scraper feeds (render listing pages + article detail pages).
-- Per-feed proxy support (`--http_proxy`); render failures are surfaced instead of falling back to standard HTTP fetching.
+- Per-feed proxy support (`--proxy`); render failures are surfaced instead of falling back to standard HTTP fetching.
 
 Upstream Features
 -----------------
