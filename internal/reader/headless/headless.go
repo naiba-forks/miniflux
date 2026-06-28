@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -25,15 +26,9 @@ import (
 	"miniflux.app/v2/internal/config"
 )
 
-// go-rod's WebSocket reader (lib/cdp/websocket.go) ignores the frame opcode and
-// returns the raw payload of any frame to the consumer. When Lightpanda closes
-// the WebSocket cleanly, the close-frame payload starts with a big-endian uint16
-// status code (e.g. 0x03 0xe8 = 1000 "normal closure"); go-rod's consumeMessages
-// goroutine then tries json.Unmarshal on those bytes, fails, and calls
-// rodutils.E(err) which panics. Because the panic is in a goroutine spawned by
-// cdp.Client.Start, no caller-side recover() can catch it and the entire miniflux
-// process is killed. Replacing rodutils.Panic with a logging-only stub neutralises
-// this panic; the next ws.Read() will return EOF and consumeMessages exits normally.
+// Some lightweight CDP browsers can close their WebSocket in ways go-rod turns
+// into a panic inside an internal goroutine. Replace go-rod's panic hook with a
+// logging-only stub so a browser-side close cannot take down Miniflux.
 func init() {
 	rodutils.Panic = func(v any) {
 		slog.Warn("headless: suppressed go-rod panic from CDP consumer", slog.Any("value", v))
@@ -41,7 +36,7 @@ func init() {
 }
 
 const (
-	// cdpConnectTimeout is how long we wait for the Lightpanda CDP server to
+	// cdpConnectTimeout is how long we wait for the Obscura CDP server to
 	// become reachable after spawning the subprocess.
 	cdpConnectTimeout = 30 * time.Second
 
@@ -49,8 +44,8 @@ const (
 	// content extraction per page.
 	pageNavigationTimeout = 60 * time.Second
 
-	// healthCheckInterval is how frequently we poll /json/version while
-	// waiting for Lightpanda to start.
+	// healthCheckInterval is how frequently we poll /json/version while waiting
+	// for Obscura to start.
 	healthCheckInterval = 300 * time.Millisecond
 
 	// shutdownGracePeriod is how long we wait for the process to exit after
@@ -64,12 +59,12 @@ func ActiveProcessCount() int64 {
 	return activeProcessCount.Load()
 }
 
-// renderPageWithExtractor starts an ephemeral Lightpanda subprocess, connects
+// renderPageWithExtractor starts an ephemeral Obscura subprocess, connects
 // via CDP (go-rod), navigates to pageURL, and calls extractFn to obtain content
 // from the rendered page.
 //
-// proxyURL is optional: when non-empty it is forwarded to Lightpanda via
-// --http_proxy so that the page fetch goes through the specified proxy.
+// proxyURL is optional: when non-empty it is forwarded to Obscura via --proxy
+// so that the page fetch goes through the specified proxy.
 //
 // feedID is currently unused but reserved for future per-feed state isolation.
 func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn func(*rod.Page) (string, error)) (string, error) {
@@ -84,7 +79,7 @@ func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn f
 	}
 	defer stopSubprocess(cmd)
 
-	// Wait for Lightpanda's CDP server to be ready by polling /json/version.
+	// Wait for Obscura's CDP server to be ready by polling /json/version.
 	wsURL, err := waitForCDP(port)
 	if err != nil {
 		return "", fmt.Errorf("headless: %w", err)
@@ -95,12 +90,7 @@ func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn f
 	if err != nil {
 		return "", fmt.Errorf("headless: CDP connect failed: %w", err)
 	}
-	defer func() {
-		if e := recover(); e != nil {
-			slog.Warn("headless: panic during browser cleanup", slog.Any("error", e))
-		}
-		browser.Close()
-	}()
+	defer closeBrowser(browser)
 
 	page, err := browser.Page(proto.TargetCreateTarget{})
 	if err != nil {
@@ -126,6 +116,15 @@ func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn f
 	}
 
 	return content, nil
+}
+
+func closeBrowser(browser *rod.Browser) {
+	defer func() {
+		if e := recover(); e != nil {
+			slog.Warn("headless: panic while closing browser", slog.Any("error", e))
+		}
+	}()
+	browser.Close()
 }
 
 // RenderPage renders the page with JS, gets the full HTML, then extracts
@@ -157,10 +156,8 @@ process.stdin.on('end', async () => {
 });
 `
 
-// extractReadableContent gets the rendered HTML from Lightpanda, then pipes it
-// to a node subprocess running Defuddle for article content extraction. This
-// two-stage approach works around Lightpanda's incomplete Web API (Defuddle
-// needs getComputedStyle etc.) by using node + linkedom for the parsing stage.
+// extractReadableContent gets rendered HTML, then pipes it to a node subprocess
+// running Defuddle for article content extraction.
 func extractReadableContent(page *rod.Page, pageURL string) (string, error) {
 	htmlResult, err := page.Eval(`() => document.documentElement.outerHTML`)
 	if err != nil {
@@ -218,34 +215,36 @@ func extractFullHTML(page *rod.Page) (string, error) {
 }
 
 func startSubprocess(port int, proxyURL string) (*exec.Cmd, error) {
-	binaryPath := config.Opts.LightpandaBinaryPath()
+	binaryPath := config.Opts.ObscuraBinaryPath()
 
 	args := []string{
 		"serve",
 		"--host", "127.0.0.1",
 		"--port", strconv.Itoa(port),
 	}
+	if config.Opts.ObscuraStealth() {
+		args = append(args, "--stealth")
+	}
+	if config.Opts.ObscuraAllowPrivateNetworks() {
+		args = append(args, "--allow-private-network")
+	}
 
 	if proxyURL != "" {
-		args = append(args, "--http_proxy", proxyURL)
+		args = append(args, "--proxy", proxyURL)
 	}
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	cmd.Env = append(os.Environ(),
-		"LIGHTPANDA_DISABLE_TELEMETRY=true",
-		// Lightpanda calls std.fs.getAppDataDir("lightpanda") which resolves to
-		// $XDG_DATA_HOME/lightpanda. Without this, non-root users (e.g. UID 65534
-		// in Docker) lack a writable home directory and get AccessDenied.
-		"XDG_DATA_HOME=/tmp",
-	)
+	cmd.Env = os.Environ()
 
-	slog.Debug("headless: starting ephemeral Lightpanda subprocess",
+	slog.Debug("headless: starting ephemeral Obscura subprocess",
 		slog.String("binary", binaryPath),
 		slog.Int("port", port),
-		slog.String("proxy_url", proxyURL),
+		slog.String("proxy_url", redactProxyURL(proxyURL)),
+		slog.Bool("stealth", config.Opts.ObscuraStealth()),
+		slog.Bool("allow_private_networks", config.Opts.ObscuraAllowPrivateNetworks()),
 	)
 
 	if err := cmd.Start(); err != nil {
@@ -254,6 +253,17 @@ func startSubprocess(port int, proxyURL string) (*exec.Cmd, error) {
 	activeProcessCount.Add(1)
 
 	return cmd, nil
+}
+
+func redactProxyURL(proxyURL string) string {
+	if proxyURL == "" {
+		return ""
+	}
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return "<configured>"
+	}
+	return parsedURL.Redacted()
 }
 
 // stopSubprocess sends SIGTERM and waits for graceful exit. Falls back to
@@ -274,14 +284,14 @@ func stopSubprocess(cmd *exec.Cmd) {
 	case <-done:
 		return
 	case <-time.After(shutdownGracePeriod):
-		slog.Warn("headless: Lightpanda shutdown timed out, force killing")
+		slog.Warn("headless: Obscura shutdown timed out, force killing")
 		_ = cmd.Process.Kill()
 		// Reap zombie process.
 		<-done
 	}
 }
 
-// waitForCDP polls /json/version until Lightpanda responds with a valid
+// waitForCDP polls /json/version until Obscura responds with a valid
 // webSocketDebuggerUrl, or until cdpConnectTimeout elapses.
 func waitForCDP(port int) (string, error) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
@@ -296,7 +306,7 @@ func waitForCDP(port int) (string, error) {
 		time.Sleep(healthCheckInterval)
 	}
 
-	return "", fmt.Errorf("Lightpanda CDP not ready on port %d after %s", port, cdpConnectTimeout)
+	return "", fmt.Errorf("Obscura CDP not ready on port %d after %s", port, cdpConnectTimeout)
 }
 
 func findFreePort() (int, error) {
@@ -309,12 +319,12 @@ func findFreePort() (int, error) {
 	return port, nil
 }
 
-// LightpandaProcessCount scans /proc for running lightpanda processes.
+// ObscuraProcessCount scans /proc for running obscura processes.
 // Non-zero after all renders complete indicates a resource leak.
-func LightpandaProcessCount() int {
+func ObscuraProcessCount() int {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		slog.Warn("headless: unable to scan /proc for lightpanda processes", slog.Any("error", err))
+		slog.Warn("headless: unable to scan /proc for obscura processes", slog.Any("error", err))
 		return 0
 	}
 
@@ -332,7 +342,7 @@ func LightpandaProcessCount() int {
 			continue
 		}
 		if nullIdx := strings.IndexByte(string(cmdline), 0); nullIdx > 0 {
-			if strings.Contains(string(cmdline[:nullIdx]), "lightpanda") {
+			if strings.Contains(string(cmdline[:nullIdx]), "obscura") {
 				count++
 			}
 		}
