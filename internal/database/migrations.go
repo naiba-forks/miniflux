@@ -1473,7 +1473,7 @@ var migrations = [...]func(tx *sql.Tx) error{
 		_, err = tx.Exec(`CREATE INDEX entries_user_ai_score_idx ON entries(user_id, ai_score) WHERE ai_score > 0`)
 		return err
 	},
-	// Migration #74: Add web scraper feed type fields and JS render support for pinchtab integration.
+	// Migration #74: Add web scraper feed type fields and JS render support.
 	func(tx *sql.Tx) (err error) {
 		// feed_source_type: 'rss' (default) or 'web_scraper' to distinguish feed types.
 		_, err = tx.Exec(`ALTER TABLE feeds ADD COLUMN feed_source_type text NOT NULL DEFAULT 'rss'`)
@@ -1507,7 +1507,7 @@ var migrations = [...]func(tx *sql.Tx) error{
 		if err != nil {
 			return err
 		}
-		// Enable pinchtab JS rendering for this feed (requires system-level PINCHTAB_ENABLED).
+		// Enable Obscura JS rendering for this feed (requires system-level OBSCURA_ENABLED).
 		_, err = tx.Exec(`ALTER TABLE feeds ADD COLUMN use_js_render bool NOT NULL DEFAULT false`)
 		return err
 	},
