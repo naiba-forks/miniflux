@@ -11,8 +11,7 @@ RUN git clone --depth 1 https://github.com/kepano/defuddle /defuddle
 WORKDIR /defuddle
 RUN npm ci && npm run build
 
-# Debian slim: Lightpanda is glibc-linked, Alpine musl lacks fcntl64 symbol —
-# must use glibc-based image for native compatibility.
+# Debian slim keeps the native headless browser on glibc instead of Alpine musl.
 FROM docker.io/library/debian:bookworm-slim
 
 LABEL org.opencontainers.image.title=Miniflux
@@ -22,15 +21,17 @@ LABEL org.opencontainers.image.source=https://github.com/naiba-forks/miniflux
 
 EXPOSE 8080
 ENV LISTEN_ADDR=0.0.0.0:8080
-# TARGETARCH is provided by Docker buildx (amd64/arm64), map to Lightpanda naming (x86_64/aarch64)
+# TARGETARCH is provided by Docker buildx (amd64/arm64), map to Obscura release naming (x86_64/aarch64)
 ARG TARGETARCH
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tzdata tini nodejs curl \
     && rm -rf /var/lib/apt/lists/* \
     && ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x86_64/;s/arm64/aarch64/') \
-    && curl -fsSL -o /usr/bin/lightpanda \
-       "https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-${ARCH}-linux" \
-    && chmod +x /usr/bin/lightpanda
+    && curl -fsSL -o /tmp/obscura.tar.gz \
+       "https://github.com/h4ckf0r0day/obscura/releases/latest/download/obscura-${ARCH}-linux.tar.gz" \
+    && tar -xzf /tmp/obscura.tar.gz -C /usr/bin obscura obscura-worker \
+    && rm /tmp/obscura.tar.gz \
+    && chmod +x /usr/bin/obscura /usr/bin/obscura-worker
 COPY --from=build /go/src/app/miniflux /usr/bin/miniflux
 COPY --from=defuddle /defuddle/dist /usr/share/miniflux/defuddle/dist
 COPY --from=defuddle /defuddle/node_modules /usr/share/miniflux/defuddle/node_modules
