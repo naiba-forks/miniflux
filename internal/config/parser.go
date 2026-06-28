@@ -141,6 +141,8 @@ func (cp *configParser) postParsing() error {
 }
 
 func (cp *configParser) parseLines(lines []string) error {
+	configuredKeys := configuredKeysInLines(lines)
+
 	for lineNum, line := range lines {
 		key, value, ok := strings.Cut(line, "=")
 		if !ok {
@@ -148,6 +150,9 @@ func (cp *configParser) parseLines(lines []string) error {
 		}
 
 		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if shouldSkipDeprecatedConfigKey(key, configuredKeys) {
+			continue
+		}
 		if err := cp.parseLine(key, value); err != nil {
 			return err
 		}
@@ -160,7 +165,37 @@ func (cp *configParser) parseLines(lines []string) error {
 	return nil
 }
 
+func configuredKeysInLines(lines []string) map[string]struct{} {
+	configuredKeys := make(map[string]struct{}, len(lines))
+	for _, line := range lines {
+		key, _, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		configuredKeys[strings.TrimSpace(key)] = struct{}{}
+	}
+	return configuredKeys
+}
+
+func shouldSkipDeprecatedConfigKey(key string, configuredKeys map[string]struct{}) bool {
+	switch key {
+	case "LIGHTPANDA_BINARY_PATH":
+		if _, exists := configuredKeys["OBSCURA_BINARY_PATH"]; exists {
+			slog.Warn("Configuration option LIGHTPANDA_BINARY_PATH is deprecated and ignored because OBSCURA_BINARY_PATH is also configured")
+			return true
+		}
+	case "LIGHTPANDA_ENABLED":
+		if _, exists := configuredKeys["OBSCURA_ENABLED"]; exists {
+			slog.Warn("Configuration option LIGHTPANDA_ENABLED is deprecated and ignored because OBSCURA_ENABLED is also configured")
+			return true
+		}
+	}
+	return false
+}
+
 func (cp *configParser) parseLine(key, value string) error {
+	key = normalizeDeprecatedConfigKey(key)
+
 	field, exists := cp.options.options[key]
 	if !exists {
 		if key == "FILTER_ENTRY_MAX_AGE_DAYS" {
@@ -237,6 +272,19 @@ func (cp *configParser) parseLine(key, value string) error {
 	}
 
 	return nil
+}
+
+func normalizeDeprecatedConfigKey(key string) string {
+	switch key {
+	case "LIGHTPANDA_BINARY_PATH":
+		slog.Warn("Configuration option LIGHTPANDA_BINARY_PATH is deprecated; use OBSCURA_BINARY_PATH instead")
+		return "OBSCURA_BINARY_PATH"
+	case "LIGHTPANDA_ENABLED":
+		slog.Warn("Configuration option LIGHTPANDA_ENABLED is deprecated; use OBSCURA_ENABLED instead")
+		return "OBSCURA_ENABLED"
+	default:
+		return key
+	}
 }
 
 func parseStringValue(value string, fallback string) string {

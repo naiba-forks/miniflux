@@ -479,14 +479,24 @@ func NewConfigOptions() *configOptions {
 				rawValue:        "0",
 				valueType:       boolType,
 			},
-			"LIGHTPANDA_BINARY_PATH": {
-				parsedStringValue: "/usr/bin/lightpanda",
-				rawValue:          "/usr/bin/lightpanda",
+			"OBSCURA_ALLOW_PRIVATE_NETWORKS": {
+				parsedBoolValue: true,
+				rawValue:        "1",
+				valueType:       boolType,
+			},
+			"OBSCURA_BINARY_PATH": {
+				parsedStringValue: "/usr/bin/obscura",
+				rawValue:          "/usr/bin/obscura",
 				valueType:         stringType,
 			},
-			"LIGHTPANDA_ENABLED": {
+			"OBSCURA_ENABLED": {
 				parsedBoolValue: false,
 				rawValue:        "0",
+				valueType:       boolType,
+			},
+			"OBSCURA_STEALTH": {
+				parsedBoolValue: true,
+				rawValue:        "1",
 				valueType:       boolType,
 			},
 
@@ -901,12 +911,20 @@ func (c *configOptions) MetricsUsername() string {
 	return c.options["METRICS_USERNAME"].parsedStringValue
 }
 
-func (c *configOptions) LightpandaBinaryPath() string {
-	return c.options["LIGHTPANDA_BINARY_PATH"].parsedStringValue
+func (c *configOptions) ObscuraAllowPrivateNetworks() bool {
+	return c.options["OBSCURA_ALLOW_PRIVATE_NETWORKS"].parsedBoolValue
 }
 
-func (c *configOptions) LightpandaEnabled() bool {
-	return c.options["LIGHTPANDA_ENABLED"].parsedBoolValue
+func (c *configOptions) ObscuraBinaryPath() string {
+	return c.options["OBSCURA_BINARY_PATH"].parsedStringValue
+}
+
+func (c *configOptions) ObscuraEnabled() bool {
+	return c.options["OBSCURA_ENABLED"].parsedBoolValue
+}
+
+func (c *configOptions) ObscuraStealth() bool {
+	return c.options["OBSCURA_STEALTH"].parsedBoolValue
 }
 
 func (c *configOptions) OAuth2ClientID() string {

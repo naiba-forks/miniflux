@@ -898,6 +898,112 @@ func TestMetricsUsernameOptionParsing(t *testing.T) {
 	}
 }
 
+func TestObscuraOptionParsing(t *testing.T) {
+	configParser := NewConfigParser()
+
+	if !configParser.options.ObscuraAllowPrivateNetworks() {
+		t.Fatalf("Expected OBSCURA_ALLOW_PRIVATE_NETWORKS to be enabled by default")
+	}
+
+	if configParser.options.ObscuraBinaryPath() != "/usr/bin/obscura" {
+		t.Fatalf("Expected OBSCURA_BINARY_PATH to be '/usr/bin/obscura' by default")
+	}
+
+	if configParser.options.ObscuraEnabled() {
+		t.Fatalf("Expected OBSCURA_ENABLED to be disabled by default")
+	}
+
+	if !configParser.options.ObscuraStealth() {
+		t.Fatalf("Expected OBSCURA_STEALTH to be enabled by default")
+	}
+
+	if err := configParser.parseLines([]string{
+		"OBSCURA_ALLOW_PRIVATE_NETWORKS=0",
+		"OBSCURA_BINARY_PATH=/opt/obscura",
+		"OBSCURA_ENABLED=1",
+		"OBSCURA_STEALTH=0",
+	}); err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if configParser.options.ObscuraAllowPrivateNetworks() {
+		t.Fatalf("Expected OBSCURA_ALLOW_PRIVATE_NETWORKS to be disabled")
+	}
+
+	if configParser.options.ObscuraBinaryPath() != "/opt/obscura" {
+		t.Fatalf("Expected OBSCURA_BINARY_PATH to be '/opt/obscura'")
+	}
+
+	if !configParser.options.ObscuraEnabled() {
+		t.Fatalf("Expected OBSCURA_ENABLED to be enabled")
+	}
+
+	if configParser.options.ObscuraStealth() {
+		t.Fatalf("Expected OBSCURA_STEALTH to be disabled")
+	}
+}
+
+func TestDeprecatedLightpandaOptionAliases(t *testing.T) {
+	configParser := NewConfigParser()
+
+	if err := configParser.parseLines([]string{
+		"LIGHTPANDA_BINARY_PATH=/opt/lightpanda-compatible",
+		"LIGHTPANDA_ENABLED=1",
+	}); err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if configParser.options.ObscuraBinaryPath() != "/opt/lightpanda-compatible" {
+		t.Fatalf("Expected LIGHTPANDA_BINARY_PATH to configure OBSCURA_BINARY_PATH")
+	}
+
+	if !configParser.options.ObscuraEnabled() {
+		t.Fatalf("Expected LIGHTPANDA_ENABLED to configure OBSCURA_ENABLED")
+	}
+}
+
+func TestObscuraOptionsTakePrecedenceOverDeprecatedAliases(t *testing.T) {
+	configParser := NewConfigParser()
+
+	if err := configParser.parseLines([]string{
+		"LIGHTPANDA_BINARY_PATH=/opt/deprecated",
+		"OBSCURA_BINARY_PATH=/opt/current",
+		"LIGHTPANDA_ENABLED=1",
+		"OBSCURA_ENABLED=0",
+	}); err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if configParser.options.ObscuraBinaryPath() != "/opt/current" {
+		t.Fatalf("Expected OBSCURA_BINARY_PATH to take precedence over deprecated LIGHTPANDA_BINARY_PATH")
+	}
+
+	if configParser.options.ObscuraEnabled() {
+		t.Fatalf("Expected OBSCURA_ENABLED to take precedence over deprecated LIGHTPANDA_ENABLED")
+	}
+}
+
+func TestObscuraOptionsTakePrecedenceWhenDeprecatedAliasesComeLater(t *testing.T) {
+	configParser := NewConfigParser()
+
+	if err := configParser.parseLines([]string{
+		"OBSCURA_BINARY_PATH=/opt/current",
+		"LIGHTPANDA_BINARY_PATH=/opt/deprecated",
+		"OBSCURA_ENABLED=0",
+		"LIGHTPANDA_ENABLED=1",
+	}); err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if configParser.options.ObscuraBinaryPath() != "/opt/current" {
+		t.Fatalf("Expected OBSCURA_BINARY_PATH to take precedence when deprecated LIGHTPANDA_BINARY_PATH is parsed later")
+	}
+
+	if configParser.options.ObscuraEnabled() {
+		t.Fatalf("Expected OBSCURA_ENABLED to take precedence when deprecated LIGHTPANDA_ENABLED is parsed later")
+	}
+}
+
 func TestOAuth2ClientIDOptionParsing(t *testing.T) {
 	configParser := NewConfigParser()
 
