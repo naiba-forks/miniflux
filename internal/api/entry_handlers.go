@@ -191,26 +191,36 @@ func (h *handler) findEntries(w http.ResponseWriter, r *http.Request, feedID int
 
 	for i := range entries {
 		entries[i].Content = mediaproxy.RewriteDocumentWithAbsoluteProxyURL(entries[i].Content)
+		entries[i].Enclosures.ProxifyEnclosureURL(config.Opts.MediaProxyMode(), config.Opts.MediaProxyResourceTypes())
 	}
 
 	response.JSON(w, r, &entriesResponse{Total: count, Entries: entries})
 }
 
-func (h *handler) setEntryStatusHandler(w http.ResponseWriter, r *http.Request) {
+func (h *handler) setEntryStatusAndStarredHandler(w http.ResponseWriter, r *http.Request) {
 	var entriesStatusUpdateRequest model.EntriesStatusUpdateRequest
 	if err := json_parser.NewDecoder(r.Body).Decode(&entriesStatusUpdateRequest); err != nil {
 		response.JSONBadRequest(w, r, err)
 		return
 	}
 
-	if err := validator.ValidateEntriesStatusUpdateRequest(&entriesStatusUpdateRequest); err != nil {
+	if err := validator.ValidateEntriesStatusAndStarredUpdateRequest(&entriesStatusUpdateRequest); err != nil {
 		response.JSONBadRequest(w, r, err)
 		return
 	}
 
-	if err := h.store.SetEntriesStatus(request.UserID(r), entriesStatusUpdateRequest.EntryIDs, entriesStatusUpdateRequest.Status); err != nil {
-		response.JSONServerError(w, r, err)
-		return
+	if entriesStatusUpdateRequest.Status != "" {
+		if err := h.store.SetEntriesStatus(request.UserID(r), entriesStatusUpdateRequest.EntryIDs, entriesStatusUpdateRequest.Status); err != nil {
+			response.JSONServerError(w, r, err)
+			return
+		}
+	}
+
+	if entriesStatusUpdateRequest.Starred != nil {
+		if err := h.store.SetEntriesStarredState(request.UserID(r), entriesStatusUpdateRequest.EntryIDs, *entriesStatusUpdateRequest.Starred); err != nil {
+			response.JSONServerError(w, r, err)
+			return
+		}
 	}
 
 	response.NoContent(w, r)
@@ -499,20 +509,6 @@ func (h *handler) fetchContentHandler(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, entryContentResponse{Content: mediaproxy.RewriteDocumentWithAbsoluteProxyURL(entry.Content), ReadingTime: entry.ReadingTime})
 }
 
-type entryIDsResponse struct {
-	Total    int     `json:"total"`
-	EntryIDs []int64 `json:"entry_ids"`
-}
-
-func parseEntryIDsParams(r *http.Request) (limit, offset int) {
-	limit = request.QueryIntParam(r, "limit", model.MaxEntryIDsLimit)
-	if limit <= 0 || limit > model.MaxEntryIDsLimit {
-		limit = model.MaxEntryIDsLimit
-	}
-	offset = request.QueryIntParam(r, "offset", 0)
-	return limit, offset
-}
-
 func (h *handler) getEntryIDsHandler(w http.ResponseWriter, r *http.Request) {
 	if request.HasQueryParam(r, "starred") {
 		starredValue := request.QueryStringParam(r, "starred", "")
@@ -594,10 +590,6 @@ func configureFilters(builder *storage.EntryQueryBuilder, r *http.Request) *stor
 
 	if afterChangedTimestamp := request.QueryInt64Param(r, "changed_after", 0); afterChangedTimestamp > 0 {
 		builder = builder.AfterChangedDate(time.Unix(afterChangedTimestamp, 0))
-	}
-
-	if categoryID := request.QueryInt64Param(r, "category_id", 0); categoryID > 0 {
-		builder = builder.WithCategoryID(categoryID)
 	}
 
 	if request.HasQueryParam(r, "starred") {
@@ -844,4 +836,13 @@ func (h *handler) stopBackfill(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
 	integration.StopBackfill(userID)
 	response.NoContent(w, r)
+}
+
+func parseEntryIDsParams(r *http.Request) (limit, offset int) {
+	limit = request.QueryIntParam(r, "limit", model.MaxEntryIDsLimit)
+	if limit <= 0 || limit > model.MaxEntryIDsLimit {
+		limit = model.MaxEntryIDsLimit
+	}
+	offset = request.QueryIntParam(r, "offset", 0)
+	return limit, offset
 }
