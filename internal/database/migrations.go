@@ -1649,4 +1649,21 @@ var migrations = [...]func(tx *sql.Tx) error{
 		`)
 		return err
 	},
+	func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec(`
+			ALTER TABLE entries
+				ADD COLUMN ai_failure_count smallint NOT NULL DEFAULT 0 CHECK (ai_failure_count >= 0),
+				ADD COLUMN ai_last_error text NOT NULL DEFAULT '',
+				ADD COLUMN ai_last_attempted_at timestamp with time zone;
+
+			CREATE INDEX entries_user_ai_pending_idx
+				ON entries (user_id, status, published_at DESC)
+				WHERE ai_summary = '' AND ai_failure_count < 3;
+
+			CREATE INDEX entries_user_ai_failed_idx
+				ON entries (user_id, ai_last_attempted_at DESC)
+				WHERE ai_summary = '' AND ai_failure_count >= 3;
+		`)
+		return err
+	},
 }

@@ -1440,6 +1440,85 @@ footer .elevator {
     white-space: pre-wrap;
 }
 
+.ai-processing-status {
+    margin-top: 1em;
+    padding: 1em;
+    border: 1px solid var(--entry-header-border-color, #ddd);
+    border-radius: 4px;
+    background: var(--body-background, #fff);
+}
+
+.ai-processing-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1em;
+    margin-bottom: 0.8em;
+}
+
+.ai-processing-status-header h3 {
+    margin: 0;
+}
+
+.ai-processing-status-badge {
+    padding: 0.2em 0.55em;
+    border-radius: 999px;
+    color: #fff;
+    background: #59636e;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.ai-processing-status-running,
+.ai-processing-status-stopping {
+    background: #0969da;
+}
+
+.ai-processing-status-completed {
+    background: #22863a;
+}
+
+.ai-processing-status-completed-with-errors,
+.ai-processing-status-stopped {
+    background: #9a6700;
+}
+
+.ai-processing-status-failed {
+    background: #cb2431;
+}
+
+.ai-processing-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8em, 1fr));
+    gap: 0.75em;
+    margin: 0;
+}
+
+.ai-processing-stats div {
+    min-width: 0;
+}
+
+.ai-processing-stats dt {
+    color: var(--counter-color, #666);
+    font-size: 0.85em;
+}
+
+.ai-processing-stats dd {
+    margin: 0.2em 0 0;
+    font-size: 1.15em;
+    font-weight: 600;
+}
+
+.ai-processing-status progress {
+    width: 100%;
+    margin-top: 0.8em;
+}
+
+.ai-processing-status > p {
+    margin: 0.8em 0 0;
+    overflow-wrap: anywhere;
+}
+
 .ai-summary summary {
     cursor: pointer;
     font-weight: bold;

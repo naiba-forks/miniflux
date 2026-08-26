@@ -45,11 +45,14 @@
     data-webauthn-login-finish-url="{{ routePath "/webauthn/login/finish" }}"
     data-webauthn-delete-all-url="{{ routePath "/webauthn/deleteall" }}"
     {{ end }}
-    {{ if .showAIDigest }}
+    {{ if .user }}
     data-ai-page-summary-url="{{ routePath "/ai-page-summary" }}"
     data-ai-page-summary-status-url="{{ routePath "/ai-page-summary-status" }}"
     data-ai-backfill-status-url="{{ routePath "/ai-backfill-status" }}"
     data-ai-stop-backfill-url="{{ routePath "/ai-stop-backfill" }}"
+    data-ai-backfill-url="{{ routePath "/ai-backfill" }}"
+    data-ai-force-backfill-url="{{ routePath "/ai-force-backfill" }}"
+    data-ai-test-connection-url="{{ routePath "/ai-test-connection" }}"
     {{ end }}
     {{ if .user }}data-user-language="{{ .user.Language }}"{{ end }}
     {{ if .user }}
@@ -68,21 +71,6 @@
                 {{ icon "chevron-down"}}
             </div>
             <ul id="header-menu">
-                {{ if .showAIDigest }}
-                <li {{ if or (eq .menu "unread") (eq .menu "ai-digest") }}class="active"{{ end }} title="{{ t "tooltip.keyboard_shortcuts" "g u" }}">
-                    <a href="{{ routePath "/unread" }}"
-                        data-page="unread"
-                        {{ if gt .countAIDigest 0 }}
-                        aria-label="{{ t "menu.unread" }}, {{ plural "page.unread_entry_count" .countAIDigest .countAIDigest }}"
-                        {{ end }}
-                    >
-                        {{ icon "brain" }}{{ t "menu.unread" }}
-                        {{ if gt .countAIDigest 0 }}
-                        <span class="ai-digest-counter-wrapper" aria-hidden="true">(<span class="ai-digest-counter">{{ .countAIDigest }}</span>)</span>
-                        {{ end }}
-                    </a>
-                </li>
-                {{ else }}
                 <li {{ if eq .menu "unread" }}class="active"{{ end }} title="{{ t "tooltip.keyboard_shortcuts" "g u" }}">
                     <a href="{{ routePath "/unread" }}"
                         data-page="unread"
@@ -93,6 +81,20 @@
                         {{ icon "entries" }}{{ t "menu.unread" }}
                         {{ if gt .countUnread 0 }}
                         <span class="unread-counter-wrapper" aria-hidden="true">(<span class="unread-counter">{{ .countUnread }}</span>)</span>
+                        {{ end }}
+                    </a>
+                </li>
+                {{ if .showAIDigest }}
+                <li {{ if eq .menu "ai-digest" }}class="active"{{ end }}>
+                    <a href="{{ routePath "/ai-digest" }}"
+                        data-page="ai-digest"
+                        {{ if gt .countAIDigest 0 }}
+                        aria-label="{{ t "page.ai_digest.title" }}, {{ plural "page.unread_entry_count" .countAIDigest .countAIDigest }}"
+                        {{ end }}
+                    >
+                        {{ icon "brain" }}{{ t "page.ai_digest.title" }}
+                        {{ if gt .countAIDigest 0 }}
+                        <span class="ai-digest-counter-wrapper" aria-hidden="true">(<span class="ai-digest-counter">{{ .countAIDigest }}</span>)</span>
                         {{ end }}
                     </a>
                 </li>

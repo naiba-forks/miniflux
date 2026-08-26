@@ -8,19 +8,22 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"miniflux.app/v2/internal/http/request"
 	"miniflux.app/v2/internal/http/response"
 	"miniflux.app/v2/internal/integration"
 	"miniflux.app/v2/internal/integration/ai"
+	"miniflux.app/v2/internal/model"
 )
 
 func (h *handler) aiBackfill(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
 
-	if integration.IsBackfillRunning(userID) {
-		response.HTMLRedirect(w, r, h.routePath("/integrations"))
+	if integration.IsAIProcessingRunning(userID) {
+		response.NoContent(w, r)
 		return
 	}
 
@@ -38,14 +41,14 @@ func (h *handler) aiBackfill(w http.ResponseWriter, r *http.Request) {
 
 	go integration.BackfillAISummaries(h.store, userID, userIntegrations, user.Language)
 
-	response.HTMLRedirect(w, r, h.routePath("/integrations"))
+	response.NoContent(w, r)
 }
 
 func (h *handler) aiForceBackfill(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
 
-	if integration.IsBackfillRunning(userID) {
-		response.HTMLRedirect(w, r, h.routePath("/integrations"))
+	if integration.IsAIProcessingRunning(userID) {
+		response.NoContent(w, r)
 		return
 	}
 
@@ -63,18 +66,81 @@ func (h *handler) aiForceBackfill(w http.ResponseWriter, r *http.Request) {
 
 	go integration.ForceBackfillAISummaries(h.store, userID, userIntegrations, user.Language)
 
-	response.HTMLRedirect(w, r, h.routePath("/integrations"))
+	response.NoContent(w, r)
+}
+
+type aiBackfillStatusResponse struct {
+	Running     bool                           `json:"running"`
+	Stoppable   bool                           `json:"stoppable"`
+	Pending     int                            `json:"pending"`
+	Summarized  int                            `json:"summarized"`
+	Failed      int                            `json:"failed"`
+	LastError   string                         `json:"last_error,omitempty"`
+	LastErrorAt *time.Time                     `json:"last_error_at,omitempty"`
+	MaxAttempts int                            `json:"max_attempts"`
+	State       *integration.AIProcessingState `json:"state,omitempty"`
 }
 
 func (h *handler) aiBackfillStatus(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
-	response.JSON(w, r, map[string]bool{"running": integration.IsBackfillRunning(userID)})
+
+	stats, err := h.store.AISummaryQueueStats(userID)
+	if err != nil {
+		response.JSONServerError(w, r, err)
+		return
+	}
+
+	backfillRunning := integration.IsBackfillRunning(userID)
+	result := aiBackfillStatusResponse{
+		Running:     integration.IsAIProcessingRunning(userID) || backfillRunning,
+		Stoppable:   backfillRunning,
+		Pending:     stats.Pending,
+		Summarized:  stats.Summarized,
+		Failed:      stats.Failed,
+		LastError:   stats.LastError,
+		LastErrorAt: stats.LastErrorAt,
+		MaxAttempts: model.MaxAISummaryFailures,
+	}
+	if state, ok := integration.GetAIProcessingState(userID); ok {
+		result.State = &state
+	}
+
+	response.JSON(w, r, result)
 }
 
 func (h *handler) aiStopBackfill(w http.ResponseWriter, r *http.Request) {
 	userID := request.UserID(r)
 	integration.StopBackfill(userID)
 	response.NoContent(w, r)
+}
+
+type aiTestConnectionRequest struct {
+	ProviderURL string `json:"provider_url"`
+	APIKey      string `json:"api_key"`
+	Model       string `json:"model"`
+}
+
+func (h *handler) aiTestConnection(w http.ResponseWriter, r *http.Request) {
+	var req aiTestConnectionRequest
+	if err := json_parser.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.JSONBadRequest(w, r, err)
+		return
+	}
+
+	req.ProviderURL = strings.TrimSpace(req.ProviderURL)
+	req.APIKey = strings.TrimSpace(req.APIKey)
+	req.Model = strings.TrimSpace(req.Model)
+	if req.ProviderURL == "" || req.APIKey == "" || req.Model == "" {
+		response.JSONBadRequest(w, r, errors.New("provider URL, API key, and model are required"))
+		return
+	}
+
+	if err := ai.NewClient(req.ProviderURL, req.APIKey, req.Model).TestConnection(); err != nil {
+		response.JSONBadRequest(w, r, err)
+		return
+	}
+
+	response.JSON(w, r, map[string]bool{"ok": true})
 }
 
 type pageSummaryResult struct {

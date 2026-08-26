@@ -3,13 +3,14 @@ module miniflux.app/v2
 // When changing version here don't forget to also upgrade CONTRIBUTING.md
 
 // +heroku goVersion go1.26
-go 1.26.0
+go 1.26.4
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/andybalholm/brotli v1.2.2
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-webauthn/webauthn v0.17.4
+	github.com/kaptinlin/jsonrepair v0.4.8
 	github.com/lib/pq v1.12.3
 	github.com/prometheus/client_golang v1.24.1
 	github.com/tdewolff/minify/v2 v2.24.17
@@ -22,6 +23,7 @@ require (
 )
 
 require (
+	github.com/go-json-experiment/json v0.0.0-20260601182631-00ed12fed2a6 // indirect
 	github.com/go-webauthn/x v0.2.6 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect

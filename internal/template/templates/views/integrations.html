@@ -16,7 +16,7 @@
     {{ end }}
 
     <details {{ if .form.AIEnabled }}open{{ end }}>
-        <summary>AI Summarization</summary>
+        <summary>{{ t "page.ai_digest.title" }}</summary>
         <div class="form-section">
             <label>
                 <input type="checkbox" name="ai_enabled" value="1" {{ if .form.AIEnabled }}checked{{ end }}> {{ t "form.integration.ai_activate" }}
@@ -29,17 +29,45 @@
             <input type="text" name="ai_model" id="form-ai-model" value="{{ .form.AIModel }}" placeholder="gpt-4o-mini" spellcheck="false">
             <div class="buttons">
                 <button type="submit" class="button button-primary" data-label-loading="{{ t "form.submit.saving" }}">{{ t "action.update" }}</button>
+                <button type="button" class="button" id="ai-test-connection"
+                    data-label-default="{{ t "form.integration.ai_test_connection" }}"
+                    data-label-loading="{{ t "form.integration.ai_test_connection_loading" }}">{{ t "form.integration.ai_test_connection" }}</button>
             </div>
+            <p id="ai-test-connection-result" class="initially-hidden" role="status"
+                data-label-success="{{ t "form.integration.ai_test_connection_success" }}"></p>
             {{ if .form.AIEnabled }}
             <div class="buttons">
-                <a href="{{ routePath "/ai-backfill" }}" class="button button-primary"
+                <button type="button" id="ai-backfill" class="button button-primary"
                     data-label-loading="{{ t "form.integration.ai_backfill_loading" }}"
-                    data-label-default="{{ t "form.integration.ai_backfill" }}">{{ t "form.integration.ai_backfill" }}</a>
-                <a href="{{ routePath "/ai-force-backfill" }}" class="button button-primary"
+                    data-label-default="{{ t "form.integration.ai_backfill" }}">{{ t "form.integration.ai_backfill" }}</button>
+                <button type="button" id="ai-force-backfill" class="button"
                     data-label-loading="{{ t "form.integration.ai_force_backfill_loading" }}"
-                    data-label-default="{{ t "form.integration.ai_force_backfill" }}">{{ t "form.integration.ai_force_backfill" }}</a>
-                <button type="button" class="button button-primary initially-hidden" id="ai-stop-backfill">{{ t "form.integration.ai_stop_backfill" }}</button>
+                    data-label-default="{{ t "form.integration.ai_force_backfill" }}">{{ t "form.integration.ai_force_backfill" }}</button>
+                <button type="button" class="button button-danger initially-hidden" id="ai-stop-backfill">{{ t "form.integration.ai_stop_backfill" }}</button>
             </div>
+
+            <section class="ai-processing-status initially-hidden" id="ai-processing-status" aria-live="polite"
+                data-status-running="{{ t "form.integration.ai_status_running" }}"
+                data-status-stopping="{{ t "form.integration.ai_status_stopping" }}"
+                data-status-completed="{{ t "form.integration.ai_status_completed" }}"
+                data-status-completed-with-errors="{{ t "form.integration.ai_status_completed_with_errors" }}"
+                data-status-failed="{{ t "form.integration.ai_status_failed" }}"
+                data-status-stopped="{{ t "form.integration.ai_status_stopped" }}">
+                <div class="ai-processing-status-header">
+                    <h3>{{ t "form.integration.ai_status_title" }}</h3>
+                    <span id="ai-processing-status-badge" class="ai-processing-status-badge initially-hidden"></span>
+                </div>
+                <dl class="ai-processing-stats">
+                    <div><dt>{{ t "form.integration.ai_status_pending" }}</dt><dd id="ai-status-pending">0</dd></div>
+                    <div><dt>{{ t "form.integration.ai_status_summarized" }}</dt><dd id="ai-status-summarized">0</dd></div>
+                    <div id="ai-status-progress-stat" class="initially-hidden"><dt>{{ t "form.integration.ai_status_progress" }}</dt><dd id="ai-status-progress">0 / 0</dd></div>
+                    <div id="ai-status-failed-stat" class="initially-hidden"><dt>{{ t "form.integration.ai_status_failed_count" }}</dt><dd id="ai-status-failed">0</dd></div>
+                </dl>
+                <progress id="ai-status-progress-bar" class="initially-hidden" value="0" max="1"></progress>
+                <p id="ai-status-current-row" class="initially-hidden"><strong>{{ t "form.integration.ai_status_current" }}:</strong> <span id="ai-status-current"></span></p>
+                <p id="ai-status-last-success-row" class="initially-hidden"><strong>{{ t "form.integration.ai_status_last_success" }}:</strong> <time id="ai-status-last-success"></time></p>
+                <p id="ai-status-last-error-row" class="alert alert-error initially-hidden"><strong>{{ t "form.integration.ai_status_last_error" }}:</strong> <span id="ai-status-last-error"></span></p>
+            </section>
             {{ end }}
         </div>
     </details>

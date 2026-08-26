@@ -10,13 +10,18 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
+
+	"github.com/kaptinlin/jsonrepair"
 )
 
 const (
 	defaultClientTimeout = 30 * time.Second
 	maxContentLength     = 4000
+	maxModelJSONLength   = 64 * 1024
 )
 
 var htmlTagRegexp = regexp.MustCompile("<[^>]*>")
@@ -65,6 +70,13 @@ func (c *Client) SummarizeEntry(title, content, aiSummary, language string) (*Su
 // Used by the force-backfill feature to regenerate summaries with a new model or language.
 func (c *Client) ForceSummarizeEntry(title, content, language string) (*SummarizeResult, error) {
 	return c.callSummarize(title, content, language)
+}
+
+// TestConnection verifies the complete OpenAI-compatible summarization path,
+// including authentication, model availability, and the expected JSON output.
+func (c *Client) TestConnection() error {
+	_, err := c.callSummarize("Connection test", "This is a short connection test.", "en_US")
+	return err
 }
 
 // buildSystemPrompt constructs the system prompt with the user's preferred language.
@@ -173,9 +185,10 @@ func (c *Client) callSummarize(title, content, language string) (*SummarizeResul
 		return nil, fmt.Errorf("ai: response message content is empty")
 	}
 
-	// The AI message content is itself a JSON string — parse it into SummarizeResult.
-	var result SummarizeResult
-	if err := json.Unmarshal([]byte(messageContent), &result); err != nil {
+	// Models sometimes wrap otherwise valid JSON in Markdown fences or add a
+	// short preamble despite being instructed to return JSON only.
+	result, err := parseSummarizeResult(messageContent)
+	if err != nil {
 		return nil, fmt.Errorf("ai: unable to parse summary JSON from model response: %v (raw: %s)", err, truncateContent(messageContent, 256))
 	}
 
@@ -187,7 +200,172 @@ func (c *Client) callSummarize(title, content, language string) (*SummarizeResul
 		result.Score = 10
 	}
 
-	return &result, nil
+	return result, nil
+}
+
+// parseSummarizeResult extracts the first valid summary object from a model
+// response. It accepts plain JSON, Markdown fenced JSON, and a short prose
+// preamble/suffix. Each opening brace is tried as a candidate so braces in a
+// preamble do not prevent a later valid object from being decoded.
+func parseSummarizeResult(content string) (*SummarizeResult, error) {
+	content = stripThinkingContent(strings.TrimSpace(content))
+	if len(content) > maxModelJSONLength {
+		return nil, fmt.Errorf("model response is too large (%d bytes)", len(content))
+	}
+
+	normalized := normalizeModelJSONWhitespace(content)
+	normalized = removeModelJSONTrailingCommas(normalized)
+	result, parseErr := extractSummarizeResult(normalized)
+	if parseErr == nil {
+		return result, nil
+	}
+
+	repaired, repairErr := jsonrepair.Repair(content)
+	if repairErr != nil {
+		return nil, fmt.Errorf("standard parse failed: %v; JSON repair failed: %v", parseErr, repairErr)
+	}
+
+	result, repairedParseErr := extractSummarizeResult(repaired)
+	if repairedParseErr != nil {
+		return nil, fmt.Errorf("standard parse failed: %v; repaired JSON is invalid: %v", parseErr, repairedParseErr)
+	}
+	return result, nil
+}
+
+func extractSummarizeResult(content string) (*SummarizeResult, error) {
+
+	var lastErr error
+	for offset := 0; offset < len(content); {
+		brace := strings.IndexByte(content[offset:], '{')
+		if brace < 0 {
+			break
+		}
+		offset += brace
+
+		result, err := decodeSummarizeResult(strings.NewReader(content[offset:]))
+		if err == nil {
+			return result, nil
+		} else {
+			lastErr = err
+		}
+		offset++
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no JSON object found")
+	}
+	return nil, lastErr
+}
+
+func decodeSummarizeResult(reader *strings.Reader) (*SummarizeResult, error) {
+	var payload struct {
+		Summary string          `json:"summary"`
+		Score   json.RawMessage `json:"score"`
+	}
+	if err := json.NewDecoder(reader).Decode(&payload); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(payload.Summary) == "" {
+		return nil, fmt.Errorf("summary is empty")
+	}
+	if len(payload.Score) == 0 {
+		return nil, fmt.Errorf("score is missing")
+	}
+
+	var score int
+	if err := json.Unmarshal(payload.Score, &score); err != nil {
+		var stringScore string
+		if stringErr := json.Unmarshal(payload.Score, &stringScore); stringErr != nil {
+			return nil, fmt.Errorf("score must be an integer: %v", err)
+		}
+		parsedScore, stringErr := strconv.Atoi(strings.TrimSpace(stringScore))
+		if stringErr != nil {
+			return nil, fmt.Errorf("score must be an integer: %v", stringErr)
+		}
+		score = parsedScore
+	}
+
+	return &SummarizeResult{Summary: payload.Summary, Score: score}, nil
+}
+
+// normalizeModelJSONWhitespace converts Unicode whitespace outside JSON
+// strings to regular spaces. Some models indent fenced JSON with non-breaking
+// spaces, which encoding/json correctly rejects as invalid JSON whitespace.
+func normalizeModelJSONWhitespace(content string) string {
+	var builder strings.Builder
+	builder.Grow(len(content))
+	inString := false
+	escaped := false
+
+	for _, char := range content {
+		if inString {
+			builder.WriteRune(char)
+			if escaped {
+				escaped = false
+			} else if char == '\\' {
+				escaped = true
+			} else if char == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		if char == '"' {
+			inString = true
+			builder.WriteRune(char)
+		} else if unicode.IsSpace(char) {
+			builder.WriteByte(' ')
+		} else {
+			builder.WriteRune(char)
+		}
+	}
+
+	return builder.String()
+}
+
+// removeModelJSONTrailingCommas removes commas immediately before an object or
+// array close, but only outside strings. This handles another common model JSON
+// formatting mistake without modifying article text.
+func removeModelJSONTrailingCommas(content string) string {
+	runes := []rune(content)
+	var builder strings.Builder
+	builder.Grow(len(content))
+	inString := false
+	escaped := false
+
+	for index, char := range runes {
+		if inString {
+			builder.WriteRune(char)
+			if escaped {
+				escaped = false
+			} else if char == '\\' {
+				escaped = true
+			} else if char == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		if char == '"' {
+			inString = true
+			builder.WriteRune(char)
+			continue
+		}
+
+		if char == ',' {
+			next := index + 1
+			for next < len(runes) && unicode.IsSpace(runes[next]) {
+				next++
+			}
+			if next < len(runes) && (runes[next] == '}' || runes[next] == ']') {
+				continue
+			}
+		}
+
+		builder.WriteRune(char)
+	}
+
+	return builder.String()
 }
 
 // buildPageSummaryPrompt constructs the system prompt for generating a combined digest summary.

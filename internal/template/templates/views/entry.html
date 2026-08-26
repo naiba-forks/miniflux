@@ -241,7 +241,7 @@
     <summary>
         {{ t "entry.ai_summary" }}
         {{ if gt .entry.AIScore 0 }}
-        <span class="ai-score ai-score-{{ if ge .entry.AIScore 8 }}high{{ else if ge .entry.AIScore 5 }}medium{{ else }}low{{ end }}">{{ .entry.AIScore }}/10</span>
+        <span class="ai-score ai-score-{{ if ge .entry.AIScore 8 }}high{{ else if ge .entry.AIScore 5 }}medium{{ else }}low{{ end }}" title="{{ t "entry.ai_score" }}" aria-label="{{ t "entry.ai_score" }} {{ .entry.AIScore }}/10">{{ .entry.AIScore }}/10</span>
         {{ end }}
     </summary>
     <p>{{ .entry.AISummary }}</p>

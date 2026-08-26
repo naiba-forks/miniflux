@@ -1255,6 +1255,14 @@ function initializeAIDigestPageSummary() {
     const summaryContent = document.getElementById("ai-page-summary-content");
     const summaryText = document.getElementById("ai-page-summary-text");
 
+    function showError(message) {
+        summaryText.textContent = message;
+        summaryContent.classList.remove("initially-hidden");
+        summaryContent.classList.add("alert", "alert-error");
+        generateBtn.textContent = generateBtn.dataset.labelDefault;
+        generateBtn.disabled = false;
+    }
+
     generateBtn.addEventListener("click", () => {
         const items = document.querySelectorAll("article.entry-item[data-id]");
         if (items.length === 0) return;
@@ -1271,10 +1279,16 @@ function initializeAIDigestPageSummary() {
         const submitUrl = document.body.dataset.aiPageSummaryUrl;
         const statusUrl = document.body.dataset.aiPageSummaryStatusUrl;
 
-        sendPOSTRequest(submitUrl, { entry_ids: entryIDs }).then(resp => {
+        sendPOSTRequest(submitUrl, { entry_ids: entryIDs }).then(async resp => {
             if (!resp.ok) {
-                generateBtn.textContent = defaultLabel;
-                generateBtn.disabled = false;
+                let message = `HTTP ${resp.status}`;
+                try {
+                    const data = await resp.json();
+                    message = data.error_message || message;
+                } catch (_) {
+                    // Keep the HTTP status fallback.
+                }
+                showError(message);
                 return;
             }
             // Poll for result every 2 seconds.
@@ -1288,25 +1302,22 @@ function initializeAIDigestPageSummary() {
                         clearInterval(pollInterval);
                         summaryText.textContent = data.summary;
                         summaryContent.classList.remove("initially-hidden");
+                        summaryContent.classList.remove("alert", "alert-error");
                         const readAloudBtn = document.getElementById("ai-read-aloud-btn");
                         if (readAloudBtn) readAloudBtn.classList.remove("initially-hidden");
                         generateBtn.textContent = defaultLabel;
                         generateBtn.disabled = false;
                     } else if (data.status === "error") {
                         clearInterval(pollInterval);
-                        summaryText.textContent = data.error;
-                        summaryContent.classList.remove("initially-hidden");
-                        generateBtn.textContent = defaultLabel;
-                        generateBtn.disabled = false;
+                        showError(data.error);
                     }
                 })
                 .catch(() => {
                     clearInterval(pollInterval);
-                    generateBtn.textContent = defaultLabel;
-                    generateBtn.disabled = false;
+                    showError(generateBtn.dataset.labelError);
                 });
             }, 2000);
-        });
+        }).catch(error => showError(error.message));
     });
 }
 
@@ -1360,78 +1371,209 @@ function initializeReadAloudButton() {
  * Polls the backfill status endpoint and updates button states accordingly.
  */
 function initializeBackfillStatusPolling() {
-    const backfillBtn = document.querySelector("a[href*='ai-backfill']");
-    const forceBackfillBtn = document.querySelector("a[href*='ai-force-backfill']");
+    const backfillBtn = document.getElementById("ai-backfill");
+    const forceBackfillBtn = document.getElementById("ai-force-backfill");
     const stopBtn = document.getElementById("ai-stop-backfill");
+    const statusContainer = document.getElementById("ai-processing-status");
     const statusUrl = document.body.dataset.aiBackfillStatusUrl;
     const stopUrl = document.body.dataset.aiStopBackfillUrl;
 
-    if (!statusUrl) return;
+    if (!statusUrl || !statusContainer) return;
 
-    let pollingInterval = null;
+    let pollingTimer = null;
 
-    function setButtonsLoading(loading) {
+    function setButtonsLoading(loading, mode = "", stoppable = false) {
         if (backfillBtn) {
-            if (loading) {
+            if (loading && mode === "backfill") {
                 backfillBtn.textContent = backfillBtn.dataset.labelLoading || "Backfilling...";
-                backfillBtn.style.pointerEvents = "none";
-                backfillBtn.classList.add("disabled");
             } else {
                 backfillBtn.textContent = backfillBtn.dataset.labelDefault || backfillBtn.textContent;
-                backfillBtn.style.pointerEvents = "";
-                backfillBtn.classList.remove("disabled");
             }
+            backfillBtn.disabled = loading;
         }
         if (forceBackfillBtn) {
-            if (loading) {
+            if (loading && mode === "force_backfill") {
                 forceBackfillBtn.textContent = forceBackfillBtn.dataset.labelLoading || "Regenerating...";
-                forceBackfillBtn.style.pointerEvents = "none";
-                forceBackfillBtn.classList.add("disabled");
             } else {
                 forceBackfillBtn.textContent = forceBackfillBtn.dataset.labelDefault || forceBackfillBtn.textContent;
-                forceBackfillBtn.style.pointerEvents = "";
-                forceBackfillBtn.classList.remove("disabled");
             }
+            forceBackfillBtn.disabled = loading;
         }
         if (stopBtn) {
-            stopBtn.classList.toggle("initially-hidden", !loading);
+            stopBtn.classList.toggle("initially-hidden", !stoppable);
+            stopBtn.disabled = false;
         }
+    }
+
+    function toggleRow(id, visible) {
+        const element = document.getElementById(id);
+        if (element) element.classList.toggle("initially-hidden", !visible);
+    }
+
+    function renderStatus(data) {
+        const state = data.state || null;
+        const hasStatus = data.pending > 0 || data.summarized > 0 || data.failed > 0 || state !== null;
+        statusContainer.classList.toggle("initially-hidden", !hasStatus);
+        if (!hasStatus) return;
+
+        document.getElementById("ai-status-pending").textContent = data.pending;
+        document.getElementById("ai-status-summarized").textContent = data.summarized;
+
+        const badge = document.getElementById("ai-processing-status-badge");
+        if (state) {
+            const statusLabels = {
+                running: statusContainer.dataset.statusRunning,
+                stopping: statusContainer.dataset.statusStopping,
+                completed: statusContainer.dataset.statusCompleted,
+                completed_with_errors: statusContainer.dataset.statusCompletedWithErrors,
+                failed: statusContainer.dataset.statusFailed,
+                stopped: statusContainer.dataset.statusStopped,
+            };
+            badge.textContent = statusLabels[state.status] || state.status;
+            badge.className = `ai-processing-status-badge ai-processing-status-${state.status.replace(/_/g, "-")}`;
+        } else {
+            badge.className = "ai-processing-status-badge initially-hidden";
+        }
+
+        const hasProgress = state && state.total > 0;
+        toggleRow("ai-status-progress-stat", hasProgress);
+        toggleRow("ai-status-progress-bar", hasProgress);
+        if (hasProgress) {
+            const attempted = Math.min(state.processed + state.failed, state.total);
+            document.getElementById("ai-status-progress").textContent = `${state.processed} / ${state.total}`;
+            const progressBar = document.getElementById("ai-status-progress-bar");
+            progressBar.max = state.total;
+            progressBar.value = attempted;
+        }
+
+        const failureCount = Math.max(data.failed || 0, state ? state.failed : 0);
+        const hasFailures = failureCount > 0;
+        toggleRow("ai-status-failed-stat", hasFailures);
+        if (hasFailures) document.getElementById("ai-status-failed").textContent = failureCount;
+
+        const hasCurrent = state && state.current_entry_title;
+        toggleRow("ai-status-current-row", hasCurrent);
+        if (hasCurrent) document.getElementById("ai-status-current").textContent = state.current_entry_title;
+
+        const hasLastSuccess = state && state.last_success_at;
+        toggleRow("ai-status-last-success-row", hasLastSuccess);
+        if (hasLastSuccess) {
+            const time = document.getElementById("ai-status-last-success");
+            time.dateTime = state.last_success_at;
+            time.textContent = new Date(state.last_success_at).toLocaleString();
+        }
+
+        const lastError = state && state.last_error ? state.last_error : data.last_error;
+        const lastErrorAt = state && state.last_error_at ? state.last_error_at : data.last_error_at;
+        const hasLastError = Boolean(lastError);
+        toggleRow("ai-status-last-error-row", hasLastError);
+        if (hasLastError) {
+            let message = lastError;
+            if (lastErrorAt) message += ` (${new Date(lastErrorAt).toLocaleString()})`;
+            document.getElementById("ai-status-last-error").textContent = message;
+        }
+
+        setButtonsLoading(data.running, state ? state.mode : "", data.stoppable);
+    }
+
+    function scheduleStatusCheck(delay) {
+        if (pollingTimer) clearTimeout(pollingTimer);
+        pollingTimer = setTimeout(checkStatus, delay);
     }
 
     function checkStatus() {
-        fetch(statusUrl, {
-            headers: { "X-Csrf-Token": document.body.dataset.csrfToken || "" }
+        fetch(statusUrl)
+        .then(resp => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp.json();
         })
-        .then(resp => resp.json())
         .then(data => {
-            setButtonsLoading(data.running);
-            // Stop polling if backfill finished.
-            if (!data.running && pollingInterval) {
-                clearInterval(pollingInterval);
-                pollingInterval = null;
-            }
+            renderStatus(data);
+            scheduleStatusCheck(data.running ? 2000 : 10000);
         })
-        .catch(() => {});
+        .catch(() => scheduleStatusCheck(10000));
     }
+
+    function startBackfill(url) {
+        if (!url) return;
+        const mode = url === document.body.dataset.aiForceBackfillUrl ? "force_backfill" : "backfill";
+        setButtonsLoading(true, mode, false);
+        sendPOSTRequest(url).then(async response => {
+            if (!response.ok) {
+                let message = `HTTP ${response.status}`;
+                try {
+                    const data = await response.json();
+                    message = data.error_message || message;
+                } catch (_) {
+                    // Keep the HTTP status fallback.
+                }
+                document.getElementById("ai-status-last-error").textContent = message;
+                toggleRow("ai-status-last-error-row", true);
+                statusContainer.classList.remove("initially-hidden");
+                setButtonsLoading(false);
+                return;
+            }
+            scheduleStatusCheck(200);
+        });
+    }
+
+    if (backfillBtn) backfillBtn.addEventListener("click", () => startBackfill(document.body.dataset.aiBackfillUrl));
+    if (forceBackfillBtn) forceBackfillBtn.addEventListener("click", () => startBackfill(document.body.dataset.aiForceBackfillUrl));
 
     if (stopBtn) {
         stopBtn.addEventListener("click", () => {
+            stopBtn.disabled = true;
             sendPOSTRequest(stopUrl).then(() => {
-                setButtonsLoading(false);
-                if (pollingInterval) {
-                    clearInterval(pollingInterval);
-                    pollingInterval = null;
-                }
+                scheduleStatusCheck(200);
             });
         });
     }
 
-    // Initial check.
     checkStatus();
-    // Poll every 3 seconds while backfill might be running.
-    pollingInterval = setInterval(() => {
-        checkStatus();
-    }, 3000);
+}
+
+function initializeAITestConnection() {
+    const button = document.getElementById("ai-test-connection");
+    const result = document.getElementById("ai-test-connection-result");
+    const testUrl = document.body.dataset.aiTestConnectionUrl;
+    if (!button || !result || !testUrl) return;
+
+    button.addEventListener("click", () => {
+        const providerURL = document.getElementById("form-ai-provider-url").value;
+        const apiKey = document.getElementById("form-ai-api-key").value;
+        const model = document.getElementById("form-ai-model").value;
+
+        button.disabled = true;
+        button.textContent = button.dataset.labelLoading;
+        result.className = "initially-hidden";
+
+        sendPOSTRequest(testUrl, {
+            provider_url: providerURL,
+            api_key: apiKey,
+            model: model,
+        }).then(async response => {
+            if (response.ok) {
+                result.textContent = result.dataset.labelSuccess;
+                result.className = "alert alert-success";
+            } else {
+                let message = `HTTP ${response.status}`;
+                try {
+                    const data = await response.json();
+                    message = data.error_message || message;
+                } catch (_) {
+                    // Keep the HTTP status fallback.
+                }
+                result.textContent = message;
+                result.className = "alert alert-error";
+            }
+        }).catch(error => {
+            result.textContent = error.message;
+            result.className = "alert alert-error";
+        }).finally(() => {
+            button.disabled = false;
+            button.textContent = button.dataset.labelDefault;
+        });
+    });
 }
 /**
  * Initialize click handlers for various UI elements.
@@ -1485,6 +1627,7 @@ initializeServiceWorker();
 initializeAIDigestPageSummary();
 initializeReadAloudButton();
 initializeBackfillStatusPolling();
+initializeAITestConnection();
 
 // Reload the page if it was restored from the back-forward cache and mark entries as read is enabled.
 window.addEventListener("pageshow", (event) => {

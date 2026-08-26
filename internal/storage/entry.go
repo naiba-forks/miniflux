@@ -71,6 +71,7 @@ func (s *Storage) CountUnreadAIDigestEntries(userID int64) int {
 	builder := s.NewEntryQueryBuilder(userID)
 	builder.WithStatuses(model.EntryStatusUnread)
 	builder.WithMinAIScore(1)
+	builder.WithGloballyVisible()
 
 	n, err := builder.CountEntries()
 	if err != nil {
@@ -128,7 +129,7 @@ func (s *Storage) UpdateEntryTitleAndContent(entry *model.Entry) error {
 
 // UpdateEntryAISummary updates the AI summary and score for an entry.
 // This is called asynchronously after AI summarization completes.
-// It only updates if the entry doesn't already have a summary to avoid wasting tokens.
+// A successful update also clears any persisted retry failures.
 func (s *Storage) UpdateEntryAISummary(entry *model.Entry) error {
 	query := `
 		UPDATE
@@ -136,7 +137,10 @@ func (s *Storage) UpdateEntryAISummary(entry *model.Entry) error {
 		SET
 			ai_summary=$1,
 			ai_score=$2,
-			ai_summarized_at=$3
+			ai_summarized_at=$3,
+			ai_failure_count=0,
+			ai_last_error='',
+			ai_last_attempted_at=NULL
 		WHERE
 			id=$4 AND user_id=$5
 	`
@@ -152,6 +156,106 @@ func (s *Storage) UpdateEntryAISummary(entry *model.Entry) error {
 		return fmt.Errorf(`store: unable to update AI summary for entry #%d: %v`, entry.ID, err)
 	}
 	return nil
+}
+
+// RecordEntryAISummaryFailure persists a failed AI attempt and returns the new
+// attempt count. This prevents process restarts from resetting the retry cap.
+func (s *Storage) RecordEntryAISummaryFailure(userID, entryID int64, aiError error) (int, error) {
+	errorMessage := []rune(aiError.Error())
+	if len(errorMessage) > 2000 {
+		errorMessage = errorMessage[:2000]
+	}
+
+	var failureCount int
+	err := s.db.QueryRow(`
+		UPDATE entries
+		SET
+			ai_failure_count=LEAST(ai_failure_count + 1, $1),
+			ai_last_error=$2,
+			ai_last_attempted_at=now()
+		WHERE id=$3 AND user_id=$4
+		RETURNING ai_failure_count
+	`, model.MaxAISummaryFailures, string(errorMessage), entryID, userID).Scan(&failureCount)
+	if err != nil {
+		return 0, fmt.Errorf("store: unable to record AI failure for entry #%d: %v", entryID, err)
+	}
+	return failureCount, nil
+}
+
+// ResetEntryAISummaryFailures makes previously failed, unsummarized entries
+// eligible for processing again after an explicit user action or config change.
+func (s *Storage) ResetEntryAISummaryFailures(userID int64) error {
+	_, err := s.db.Exec(`
+		UPDATE entries
+		SET
+			ai_failure_count=0,
+			ai_last_error='',
+			ai_last_attempted_at=NULL
+		WHERE user_id=$1 AND ai_summary='' AND ai_failure_count > 0
+	`, userID)
+	if err != nil {
+		return fmt.Errorf("store: unable to reset AI failures for user #%d: %v", userID, err)
+	}
+	return nil
+}
+
+// AISummaryQueueStats contains live queue counts plus the most recent persisted
+// per-entry failure. It is derived from entries and adds no aggregate state.
+type AISummaryQueueStats struct {
+	Pending     int
+	Summarized  int
+	Failed      int
+	LastError   string
+	LastErrorAt *time.Time
+}
+
+func (s *Storage) AISummaryQueueStats(userID int64) (AISummaryQueueStats, error) {
+	query := `
+		SELECT
+			count(*) FILTER (
+				WHERE e.status='unread'
+				  AND e.ai_summary=''
+				  AND e.ai_failure_count < $2
+			) AS pending,
+			count(*) FILTER (
+				WHERE e.status='unread' AND e.ai_score >= 1
+			) AS summarized,
+			count(*) FILTER (
+				WHERE e.status='unread'
+				  AND e.ai_summary=''
+				  AND e.ai_failure_count >= $2
+			) AS failed,
+			COALESCE(
+				(array_agg(e.ai_last_error ORDER BY e.ai_last_attempted_at DESC)
+					FILTER (WHERE e.status='unread' AND e.ai_summary='' AND e.ai_last_error <> ''))[1],
+				''
+			) AS last_error,
+			max(e.ai_last_attempted_at)
+				FILTER (WHERE e.status='unread' AND e.ai_summary='' AND e.ai_last_error <> '') AS last_error_at
+		FROM entries e
+		JOIN feeds f ON f.id=e.feed_id
+		JOIN categories c ON c.id=f.category_id
+		WHERE e.user_id=$1
+		  AND f.hide_globally IS FALSE
+		  AND c.hide_globally IS FALSE
+	`
+
+	var stats AISummaryQueueStats
+	var lastErrorAt sql.NullTime
+	err := s.db.QueryRow(query, userID, model.MaxAISummaryFailures).Scan(
+		&stats.Pending,
+		&stats.Summarized,
+		&stats.Failed,
+		&stats.LastError,
+		&lastErrorAt,
+	)
+	if err != nil {
+		return AISummaryQueueStats{}, fmt.Errorf("store: unable to fetch AI queue stats: %v", err)
+	}
+	if lastErrorAt.Valid {
+		stats.LastErrorAt = &lastErrorAt.Time
+	}
+	return stats, nil
 }
 
 // createEntry add a new entry.

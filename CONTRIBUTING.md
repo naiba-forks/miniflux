@@ -9,7 +9,7 @@ Fork-specific contributions (AI summary, web scraper, Obscura JS rendering) are 
 ### Requirements
 
 - **Git**
-- **Go >= 1.26**
+- **Go >= 1.26.4**
 - **PostgreSQL**
 - **Node.js >= 18** (for Defuddle content extraction in JS rendering)
 - **Obscura** binary (optional, for JS rendering tests)

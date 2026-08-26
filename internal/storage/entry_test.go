@@ -4,9 +4,34 @@
 package storage
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
+
+	"miniflux.app/v2/internal/model"
 )
+
+func TestWithoutAISummaryEnforcesPersistentRetryLimit(t *testing.T) {
+	builder := &EntryQueryBuilder{}
+	builder.WithoutAISummary()
+
+	expected := []string{
+		"e.ai_summary = ''",
+		fmt.Sprintf("e.ai_failure_count < %d", model.MaxAISummaryFailures),
+	}
+	for _, condition := range expected {
+		if !slices.Contains(builder.conditions, condition) {
+			t.Fatalf("expected condition %q in %#v", condition, builder.conditions)
+		}
+	}
+}
+
+func TestMaxAISummaryFailuresIsBounded(t *testing.T) {
+	if model.MaxAISummaryFailures != 3 {
+		t.Fatalf("unexpected AI retry limit: %d", model.MaxAISummaryFailures)
+	}
+}
 
 func TestTruncateStringForTSVectorField(t *testing.T) {
 	const megabyte = 1024 * 1024

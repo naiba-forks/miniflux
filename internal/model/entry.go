@@ -23,31 +23,36 @@ const MaxEntryLimit = 1000
 // for the entry ID list endpoints.
 const MaxEntryIDsLimit = 10000
 
+// MaxAISummaryFailures is the maximum number of failed AI attempts for one
+// entry before automatic processing stops retrying it. An explicit backfill or
+// AI configuration change resets the counter.
+const MaxAISummaryFailures = 3
+
 // Entry represents a feed item in the system.
 type Entry struct {
-	ID          int64         `json:"id"`
-	UserID      int64         `json:"user_id"`
-	FeedID      int64         `json:"feed_id"`
-	Status      string        `json:"status"`
-	Hash        string        `json:"hash"`
-	Title       string        `json:"title"`
-	URL         string        `json:"url"`
-	CommentsURL string        `json:"comments_url"`
-	Language    string        `json:"language"`
-	Date        time.Time     `json:"published_at"`
-	CreatedAt   time.Time     `json:"created_at"`
-	ChangedAt   time.Time     `json:"changed_at"`
-	Content     string        `json:"content"`
-	Author      string        `json:"author"`
-	ShareCode   string        `json:"share_code"`
-	Starred     bool          `json:"starred"`
-	ReadingTime int           `json:"reading_time"`
-	Enclosures  EnclosureList `json:"enclosures"`
-	Feed        *Feed         `json:"feed,omitempty"`
-	Tags        []string      `json:"tags"`
-	AISummary      string     `json:"ai_summary"`
-	AIScore        int        `json:"ai_score"`
-	AISummarizedAt *time.Time `json:"ai_summarized_at"`
+	ID             int64         `json:"id"`
+	UserID         int64         `json:"user_id"`
+	FeedID         int64         `json:"feed_id"`
+	Status         string        `json:"status"`
+	Hash           string        `json:"hash"`
+	Title          string        `json:"title"`
+	URL            string        `json:"url"`
+	CommentsURL    string        `json:"comments_url"`
+	Language       string        `json:"language"`
+	Date           time.Time     `json:"published_at"`
+	CreatedAt      time.Time     `json:"created_at"`
+	ChangedAt      time.Time     `json:"changed_at"`
+	Content        string        `json:"content"`
+	Author         string        `json:"author"`
+	ShareCode      string        `json:"share_code"`
+	Starred        bool          `json:"starred"`
+	ReadingTime    int           `json:"reading_time"`
+	Enclosures     EnclosureList `json:"enclosures"`
+	Feed           *Feed         `json:"feed,omitempty"`
+	Tags           []string      `json:"tags"`
+	AISummary      string        `json:"ai_summary"`
+	AIScore        int           `json:"ai_score"`
+	AISummarizedAt *time.Time    `json:"ai_summarized_at"`
 }
 
 func NewEntry() *Entry {

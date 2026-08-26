@@ -38,6 +38,8 @@ func (s *Storage) GetNavMetadata(userID int64) (NavMetadata, error) {
 			  WHERE e.user_id = $1
 			    AND e.status = 'unread'
 			    AND e.ai_score >= 1
+			    AND f.hide_globally IS FALSE
+			    AND c.hide_globally IS FALSE
 			) AS count_ai_digest,
 			(SELECT COALESCE((
 				SELECT ai_enabled

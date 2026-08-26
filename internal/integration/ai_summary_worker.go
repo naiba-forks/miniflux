@@ -62,6 +62,11 @@ func runAISummaryCycle(store *storage.Storage) (int, int) {
 	totalEntriesSummarized := 0
 
 	for _, user := range users {
+		// Manual backfills own the user's AI queue while they are running.
+		if IsBackfillRunning(user.ID) {
+			continue
+		}
+
 		integration, err := store.Integration(user.ID)
 		if err != nil {
 			slog.Warn("AI summary worker: failed to load integration config",
@@ -97,33 +102,52 @@ func processUserEntries(store *storage.Storage, user *model.User, integration *m
 	entryBuilder := store.NewEntryQueryBuilder(user.ID)
 	entryBuilder.WithStatuses(model.EntryStatusUnread)
 	entryBuilder.WithoutAISummary()
+	entryBuilder.WithGloballyVisible()
 	entryBuilder.WithSorting("published_at", "desc")
 	entryBuilder.WithLimit(aiWorkerBatchSize)
 	entries, err := entryBuilder.GetEntries()
 	if err != nil {
+		startAIProcessing(user.ID, AIProcessingModeAutomatic, 0)
+		recordAIProcessingFailure(user.ID, err)
+		finishAIProcessing(user.ID, AIProcessingStatusFailed, err)
 		slog.Warn("AI summary worker: failed to query entries",
 			slog.Int64("user_id", user.ID),
 			slog.Any("error", err),
 		)
 		return 0
 	}
+	if len(entries) == 0 {
+		return 0
+	}
+
+	if !tryStartAIProcessing(user.ID, AIProcessingModeAutomatic, len(entries)) {
+		return 0
+	}
 
 	summarized := 0
+	consecutiveErrors := 0
 	for _, entry := range entries {
+		setAIProcessingCurrentEntry(user.ID, entry.ID, entry.Title)
 		result, err := client.SummarizeEntry(entry.Title, entry.Content, entry.AISummary, user.Language)
 		if err != nil {
+			consecutiveErrors++
+			recordEntryAISummaryFailure(store, user.ID, entry.ID, err)
 			slog.Warn("AI summary worker: failed to summarize entry",
 				slog.Int64("user_id", user.ID),
 				slog.Int64("entry_id", entry.ID),
 				slog.String("entry_url", entry.URL),
 				slog.Any("error", err),
 			)
+			if consecutiveErrors >= model.MaxAISummaryFailures {
+				break
+			}
 			continue
 		}
 
 		if result == nil {
 			continue
 		}
+		consecutiveErrors = 0
 
 		now := time.Now()
 		entry.AISummary = result.Summary
@@ -131,6 +155,7 @@ func processUserEntries(store *storage.Storage, user *model.User, integration *m
 		entry.AISummarizedAt = &now
 
 		if err := store.UpdateEntryAISummary(entry); err != nil {
+			recordEntryAISummaryFailure(store, user.ID, entry.ID, err)
 			slog.Warn("AI summary worker: failed to save summary",
 				slog.Int64("user_id", user.ID),
 				slog.Int64("entry_id", entry.ID),
@@ -140,7 +165,18 @@ func processUserEntries(store *storage.Storage, user *model.User, integration *m
 		}
 
 		summarized++
+		recordAIProcessingSuccess(user.ID)
 	}
+
+	state, _ := GetAIProcessingState(user.ID)
+	status := AIProcessingStatusCompleted
+	if state.Failed > 0 {
+		status = AIProcessingStatusCompletedWithErrors
+		if state.Processed == 0 {
+			status = AIProcessingStatusFailed
+		}
+	}
+	finishAIProcessing(user.ID, status, nil)
 
 	return summarized
 }

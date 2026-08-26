@@ -12,6 +12,7 @@ import (
 	"miniflux.app/v2/internal/http/request"
 	"miniflux.app/v2/internal/http/response"
 	"miniflux.app/v2/internal/locale"
+	"miniflux.app/v2/internal/model"
 	"miniflux.app/v2/internal/ui/form"
 )
 
@@ -27,6 +28,7 @@ func (h *handler) updateIntegration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	integrationForm := form.NewIntegrationForm(r)
+	aiConfigChanged := aiConfigurationChanged(integration, integrationForm)
 	integrationForm.Merge(integration)
 
 	if integration.FeverUsername != "" && h.store.HasDuplicateFeverUsername(userID, integration.FeverUsername) {
@@ -89,7 +91,20 @@ func (h *handler) updateIntegration(w http.ResponseWriter, r *http.Request) {
 		response.HTMLServerError(w, r, err)
 		return
 	}
+	if aiConfigChanged {
+		if err := h.store.ResetEntryAISummaryFailures(userID); err != nil {
+			response.HTMLServerError(w, r, err)
+			return
+		}
+	}
 
 	sess.SetSuccessMessage(printer.Print("alert.prefs_saved"))
 	response.HTMLRedirect(w, r, h.routePath("/integrations"))
+}
+
+func aiConfigurationChanged(integration *model.Integration, integrationForm *form.IntegrationForm) bool {
+	return integration.AIEnabled != integrationForm.AIEnabled ||
+		integration.AIProviderURL != integrationForm.AIProviderURL ||
+		integration.AIAPIKey != integrationForm.AIAPIKey ||
+		integration.AIModel != integrationForm.AIModel
 }

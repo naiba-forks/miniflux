@@ -1,13 +1,13 @@
-{{ define "title"}}{{ t "menu.unread" }} ({{ .total }}){{ end }}
+{{ define "title"}}{{ t "page.ai_digest.title" }} ({{ .total }}){{ end }}
 
 {{ define "page_header"}}
 <section class="page-header" aria-labelledby="page-header-title">
     <h1 id="page-header-title">
-        {{ t "menu.unread" }}
+        {{ t "page.ai_digest.title" }}
         <span aria-hidden="true"> ({{ .total }})</span>
     </h1>
     {{ if .entries }}
-    <nav aria-label="{{ t "menu.unread" }} {{ t "menu.title" }}">
+    <nav aria-label="{{ t "page.ai_digest.title" }} {{ t "menu.title" }}">
         <ul>
             <li>
                 <button
@@ -36,6 +36,7 @@
                     id="ai-generate-page-summary"
                     data-label-loading="{{ t "page.ai_digest.generating_summary" }}"
                     data-label-default="{{ t "page.ai_digest.generate_summary" }}"
+                    data-label-error="{{ t "error.http_internal_server_error" }}"
                 >{{ t "page.ai_digest.generate_summary" }}</button>
             </li>
         </ul>
@@ -49,7 +50,7 @@
     <p role="alert" class="alert alert-info">{{ t "alert.no_ai_digest_entry" }}</p>
 {{ else }}
     <!-- AI page summary result area (populated by JS after generation) -->
-    <div class="ai-page-summary-content initially-hidden" id="ai-page-summary-content">
+    <div class="ai-page-summary-content initially-hidden" id="ai-page-summary-content" role="status">
         <button
             class="page-button initially-hidden"
             id="ai-read-aloud-btn"
@@ -87,7 +88,7 @@
             </header>
             {{ if .AISummary }}
             <div class="item-ai-summary" dir="auto">
-                <span class="ai-score">⚡ {{ .AIScore }}/10</span>
+                <span class="ai-score ai-score-{{ if ge .AIScore 8 }}high{{ else if ge .AIScore 5 }}medium{{ else }}low{{ end }}" title="{{ t "entry.ai_score" }}" aria-label="{{ t "entry.ai_score" }} {{ .AIScore }}/10">{{ .AIScore }}/10</span>
                 <p>{{ .AISummary }}</p>
             </div>
             {{ end }}

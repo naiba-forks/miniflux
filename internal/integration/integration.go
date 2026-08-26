@@ -4,6 +4,7 @@
 package integration // import "miniflux.app/v2/internal/integration"
 
 import (
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -733,6 +734,9 @@ func SummarizeEntries(store *storage.Storage, entries model.Entries, userIntegra
 	if userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
 		return
 	}
+	if len(entries) == 0 || !tryStartAIProcessing(userIntegrations.UserID, AIProcessingModeAutomatic, len(entries)) {
+		return
+	}
 
 	client := ai.NewClient(
 		userIntegrations.AIProviderURL,
@@ -740,15 +744,22 @@ func SummarizeEntries(store *storage.Storage, entries model.Entries, userIntegra
 		userIntegrations.AIModel,
 	)
 
+	consecutiveErrors := 0
 	for _, entry := range entries {
+		setAIProcessingCurrentEntry(userIntegrations.UserID, entry.ID, entry.Title)
 		result, err := client.SummarizeEntry(entry.Title, entry.Content, entry.AISummary, language)
 		if err != nil {
+			consecutiveErrors++
+			recordEntryAISummaryFailure(store, userIntegrations.UserID, entry.ID, err)
 			slog.Error("Unable to generate AI summary",
 				slog.Int64("user_id", userIntegrations.UserID),
 				slog.Int64("entry_id", entry.ID),
 				slog.String("entry_url", entry.URL),
 				slog.Any("error", err),
 			)
+			if consecutiveErrors >= model.MaxAISummaryFailures {
+				break
+			}
 			continue
 		}
 
@@ -756,6 +767,7 @@ func SummarizeEntries(store *storage.Storage, entries model.Entries, userIntegra
 		if result == nil {
 			continue
 		}
+		consecutiveErrors = 0
 
 		now := time.Now()
 		entry.AISummary = result.Summary
@@ -763,12 +775,45 @@ func SummarizeEntries(store *storage.Storage, entries model.Entries, userIntegra
 		entry.AISummarizedAt = &now
 
 		if err := store.UpdateEntryAISummary(entry); err != nil {
+			recordEntryAISummaryFailure(store, userIntegrations.UserID, entry.ID, err)
 			slog.Error("Unable to save AI summary",
 				slog.Int64("user_id", userIntegrations.UserID),
 				slog.Int64("entry_id", entry.ID),
 				slog.Any("error", err),
 			)
+			continue
 		}
+		recordAIProcessingSuccess(userIntegrations.UserID)
+	}
+
+	state, _ := GetAIProcessingState(userIntegrations.UserID)
+	status := AIProcessingStatusCompleted
+	if state.Failed > 0 {
+		status = AIProcessingStatusCompletedWithErrors
+		if state.Processed == 0 {
+			status = AIProcessingStatusFailed
+		}
+	}
+	finishAIProcessing(userIntegrations.UserID, status, nil)
+}
+
+func recordEntryAISummaryFailure(store *storage.Storage, userID, entryID int64, processingErr error) {
+	recordAIProcessingFailure(userID, processingErr)
+	failureCount, err := store.RecordEntryAISummaryFailure(userID, entryID, processingErr)
+	if err != nil {
+		slog.Error("Unable to persist AI summary failure",
+			slog.Int64("user_id", userID),
+			slog.Int64("entry_id", entryID),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if failureCount >= model.MaxAISummaryFailures {
+		slog.Warn("AI summary retry limit reached",
+			slog.Int64("user_id", userID),
+			slog.Int64("entry_id", entryID),
+			slog.Int("failure_count", failureCount),
+		)
 	}
 }
 
@@ -787,7 +832,11 @@ func IsBackfillRunning(userID int64) bool {
 
 // StopBackfill signals a running backfill goroutine to stop for this user.
 func StopBackfill(userID int64) {
+	if !IsBackfillRunning(userID) {
+		return
+	}
 	backfillStopSignals.Store(userID, true)
+	markAIProcessingStopping(userID)
 }
 
 // isBackfillStopped checks and clears the stop signal for a user.
@@ -803,20 +852,43 @@ func isBackfillStopped(userID int64) bool {
 // Callers must check IsBackfillRunning() before launching to avoid duplicate goroutines.
 func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations *model.Integration, language string) {
 	// Mark this user's backfill as active; clear on exit.
-	activeBackfills.Store(userID, true)
+	if _, alreadyRunning := activeBackfills.LoadOrStore(userID, true); alreadyRunning {
+		return
+	}
 	defer activeBackfills.Delete(userID)
+	backfillStopSignals.Delete(userID)
+	if !tryStartAIProcessing(userID, AIProcessingModeBackfill, 0) {
+		return
+	}
 	if !userIntegrations.AIEnabled {
+		err := errors.New("AI integration is disabled")
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
+		return
+	}
+	if userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
+		err := errors.New("AI integration is incomplete")
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
+		return
+	}
+	if err := store.ResetEntryAISummaryFailures(userID); err != nil {
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
 		return
 	}
 
-	if userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
+	total, err := countAIProcessingEntries(store, userID, false)
+	if err != nil {
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
 		return
 	}
+	setAIProcessingTotal(userID, total)
 
 	// Re-read integration config each batch to pick up key changes made while backfill is running.
 	// Process in batches of 50 to avoid memory pressure on large backlogs.
 	const batchSize = 50
-	const maxConsecutiveErrors = 3 // Abort after N consecutive failures (e.g. bad API key) to prevent infinite retry loops.
 	totalProcessed := 0
 	consecutiveErrors := 0
 
@@ -827,6 +899,7 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 				slog.Int64("user_id", userID),
 				slog.Int("total_processed", totalProcessed),
 			)
+			finishAIProcessing(userID, AIProcessingStatusStopped, nil)
 			return
 		}
 		// Re-read integration config to pick up any key/URL changes made during backfill.
@@ -836,6 +909,8 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 				slog.Int64("user_id", userID),
 				slog.Any("error", err),
 			)
+			recordAIProcessingFailure(userID, err)
+			finishAIProcessing(userID, AIProcessingStatusFailed, err)
 			return
 		}
 
@@ -843,6 +918,9 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 			slog.Info("AI backfill: AI integration disabled or incomplete, stopping",
 				slog.Int64("user_id", userID),
 			)
+			err := errors.New("AI integration was disabled or is incomplete")
+			recordAIProcessingFailure(userID, err)
+			finishAIProcessing(userID, AIProcessingStatusFailed, err)
 			return
 		}
 
@@ -855,6 +933,7 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 		entryBuilder := store.NewEntryQueryBuilder(userID)
 		entryBuilder.WithStatuses(model.EntryStatusUnread)
 		entryBuilder.WithoutAISummary()
+		entryBuilder.WithGloballyVisible()
 		entryBuilder.WithSorting("published_at", "desc")
 		entryBuilder.WithLimit(batchSize)
 		entries, err := entryBuilder.GetEntries()
@@ -863,6 +942,8 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 				slog.Int64("user_id", userID),
 				slog.Any("error", err),
 			)
+			recordAIProcessingFailure(userID, err)
+			finishAIProcessing(userID, AIProcessingStatusFailed, err)
 			return
 		}
 
@@ -871,9 +952,11 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 		}
 
 		for _, entry := range entries {
+			setAIProcessingCurrentEntry(userID, entry.ID, entry.Title)
 			result, err := client.SummarizeEntry(entry.Title, entry.Content, entry.AISummary, language)
 			if err != nil {
 				consecutiveErrors++
+				recordEntryAISummaryFailure(store, userID, entry.ID, err)
 				slog.Warn("AI backfill: failed to summarize entry",
 					slog.Int64("user_id", userID),
 					slog.Int64("entry_id", entry.ID),
@@ -882,11 +965,12 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 					slog.Any("error", err),
 				)
 
-				if consecutiveErrors >= maxConsecutiveErrors {
+				if consecutiveErrors >= model.MaxAISummaryFailures {
 					slog.Error("AI backfill: aborting after too many consecutive errors (check API key/URL)",
 						slog.Int64("user_id", userID),
 						slog.Int("consecutive_errors", consecutiveErrors),
 					)
+					finishAIProcessing(userID, AIProcessingStatusFailed, err)
 					return
 				}
 				continue
@@ -905,6 +989,7 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 			entry.AISummarizedAt = &now
 
 			if err := store.UpdateEntryAISummary(entry); err != nil {
+				recordEntryAISummaryFailure(store, userID, entry.ID, err)
 				slog.Warn("AI backfill: failed to save summary",
 					slog.Int64("user_id", userID),
 					slog.Int64("entry_id", entry.ID),
@@ -914,8 +999,16 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 			}
 
 			totalProcessed++
+			recordAIProcessingSuccess(userID)
 		}
 	}
+
+	state, _ := GetAIProcessingState(userID)
+	status := AIProcessingStatusCompleted
+	if state.Failed > 0 {
+		status = AIProcessingStatusCompletedWithErrors
+	}
+	finishAIProcessing(userID, status, nil)
 
 	slog.Info("AI backfill completed",
 		slog.Int64("user_id", userID),
@@ -926,20 +1019,43 @@ func BackfillAISummaries(store *storage.Storage, userID int64, userIntegrations 
 // ForceBackfillAISummaries regenerates AI summaries for ALL unread entries, overwriting existing ones.
 // Used when switching models or languages to refresh stale summaries.
 func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrations *model.Integration, language string) {
-	activeBackfills.Store(userID, true)
+	if _, alreadyRunning := activeBackfills.LoadOrStore(userID, true); alreadyRunning {
+		return
+	}
 	defer activeBackfills.Delete(userID)
-
+	backfillStopSignals.Delete(userID)
+	if !tryStartAIProcessing(userID, AIProcessingModeForceBackfill, 0) {
+		return
+	}
 	if !userIntegrations.AIEnabled {
+		err := errors.New("AI integration is disabled")
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
+		return
+	}
+	if userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
+		err := errors.New("AI integration is incomplete")
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
+		return
+	}
+	if err := store.ResetEntryAISummaryFailures(userID); err != nil {
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
 		return
 	}
 
-	if userIntegrations.AIProviderURL == "" || userIntegrations.AIAPIKey == "" || userIntegrations.AIModel == "" {
+	total, err := countAIProcessingEntries(store, userID, true)
+	if err != nil {
+		recordAIProcessingFailure(userID, err)
+		finishAIProcessing(userID, AIProcessingStatusFailed, err)
 		return
 	}
+	setAIProcessingTotal(userID, total)
 
 	const batchSize = 50
-	const maxConsecutiveErrors = 3
 	totalProcessed := 0
+	totalAttempted := 0
 	consecutiveErrors := 0
 
 	for {
@@ -949,6 +1065,7 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 				slog.Int64("user_id", userID),
 				slog.Int("total_processed", totalProcessed),
 			)
+			finishAIProcessing(userID, AIProcessingStatusStopped, nil)
 			return
 		}
 		freshIntegrations, err := store.Integration(userID)
@@ -957,6 +1074,8 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 				slog.Int64("user_id", userID),
 				slog.Any("error", err),
 			)
+			recordAIProcessingFailure(userID, err)
+			finishAIProcessing(userID, AIProcessingStatusFailed, err)
 			return
 		}
 
@@ -964,6 +1083,9 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 			slog.Info("AI force-backfill: AI integration disabled or incomplete, stopping",
 				slog.Int64("user_id", userID),
 			)
+			err := errors.New("AI integration was disabled or is incomplete")
+			recordAIProcessingFailure(userID, err)
+			finishAIProcessing(userID, AIProcessingStatusFailed, err)
 			return
 		}
 
@@ -976,8 +1098,9 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 		// No WithoutAISummary() — we want ALL unread entries, including already summarized ones.
 		entryBuilder := store.NewEntryQueryBuilder(userID)
 		entryBuilder.WithStatuses(model.EntryStatusUnread)
+		entryBuilder.WithGloballyVisible()
 		entryBuilder.WithSorting("published_at", "desc")
-		entryBuilder.WithOffset(totalProcessed)
+		entryBuilder.WithOffset(totalAttempted)
 		entryBuilder.WithLimit(batchSize)
 		entries, err := entryBuilder.GetEntries()
 		if err != nil {
@@ -985,6 +1108,8 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 				slog.Int64("user_id", userID),
 				slog.Any("error", err),
 			)
+			recordAIProcessingFailure(userID, err)
+			finishAIProcessing(userID, AIProcessingStatusFailed, err)
 			return
 		}
 
@@ -993,9 +1118,12 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 		}
 
 		for _, entry := range entries {
+			totalAttempted++
+			setAIProcessingCurrentEntry(userID, entry.ID, entry.Title)
 			result, err := client.ForceSummarizeEntry(entry.Title, entry.Content, language)
 			if err != nil {
 				consecutiveErrors++
+				recordEntryAISummaryFailure(store, userID, entry.ID, err)
 				slog.Warn("AI force-backfill: failed to summarize entry",
 					slog.Int64("user_id", userID),
 					slog.Int64("entry_id", entry.ID),
@@ -1003,11 +1131,12 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 					slog.Any("error", err),
 				)
 
-				if consecutiveErrors >= maxConsecutiveErrors {
+				if consecutiveErrors >= model.MaxAISummaryFailures {
 					slog.Error("AI force-backfill: aborting after too many consecutive errors",
 						slog.Int64("user_id", userID),
 						slog.Int("consecutive_errors", consecutiveErrors),
 					)
+					finishAIProcessing(userID, AIProcessingStatusFailed, err)
 					return
 				}
 				continue
@@ -1025,6 +1154,7 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 			entry.AISummarizedAt = &now
 
 			if err := store.UpdateEntryAISummary(entry); err != nil {
+				recordEntryAISummaryFailure(store, userID, entry.ID, err)
 				slog.Warn("AI force-backfill: failed to save summary",
 					slog.Int64("user_id", userID),
 					slog.Int64("entry_id", entry.ID),
@@ -1034,11 +1164,29 @@ func ForceBackfillAISummaries(store *storage.Storage, userID int64, userIntegrat
 			}
 
 			totalProcessed++
+			recordAIProcessingSuccess(userID)
 		}
 	}
+
+	state, _ := GetAIProcessingState(userID)
+	status := AIProcessingStatusCompleted
+	if state.Failed > 0 {
+		status = AIProcessingStatusCompletedWithErrors
+	}
+	finishAIProcessing(userID, status, nil)
 
 	slog.Info("AI force-backfill completed",
 		slog.Int64("user_id", userID),
 		slog.Int("total_processed", totalProcessed),
 	)
+}
+
+func countAIProcessingEntries(store *storage.Storage, userID int64, force bool) (int, error) {
+	builder := store.NewEntryQueryBuilder(userID)
+	builder.WithStatuses(model.EntryStatusUnread)
+	builder.WithGloballyVisible()
+	if !force {
+		builder.WithoutAISummary()
+	}
+	return builder.CountEntries()
 }

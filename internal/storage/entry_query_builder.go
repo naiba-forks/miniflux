@@ -237,9 +237,11 @@ func (e *EntryQueryBuilder) WithMinAIScore(minScore int) *EntryQueryBuilder {
 	return e
 }
 
-// WithoutAISummary filters entries that have not been summarized by AI yet.
+// WithoutAISummary filters entries that still need an AI summary and have not
+// reached the persistent per-entry retry limit.
 func (e *EntryQueryBuilder) WithoutAISummary() *EntryQueryBuilder {
 	e.conditions = append(e.conditions, "e.ai_summary = ''")
+	e.conditions = append(e.conditions, fmt.Sprintf("e.ai_failure_count < %d", model.MaxAISummaryFailures))
 	return e
 }
 
