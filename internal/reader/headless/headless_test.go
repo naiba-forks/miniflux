@@ -111,7 +111,7 @@ func TestObscuraCDPConnection(t *testing.T) {
 	}
 	defer page.Close()
 
-	err = page.WaitLoad()
+	err = waitForPageLoad(page)
 	if err != nil {
 		t.Fatalf("WaitLoad failed: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestReadableContentExtraction(t *testing.T) {
 	}
 	defer page.Close()
 
-	err = page.WaitLoad()
+	err = waitForPageLoad(page)
 	if err != nil {
 		t.Fatalf("WaitLoad failed: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestFullHTMLExtraction(t *testing.T) {
 	}
 	defer page.Close()
 
-	err = page.WaitLoad()
+	err = waitForPageLoad(page)
 	if err != nil {
 		t.Fatalf("WaitLoad failed: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestProcessCleanupAfterCDPDisconnect(t *testing.T) {
 		killAndWait(cmd)
 		t.Fatalf("Page creation failed: %v", err)
 	}
-	page.WaitLoad()
+	waitForPageLoad(page)
 
 	_ = page.Close()
 	browser.Close()
@@ -356,7 +356,7 @@ func TestMultipleSequentialRenders(t *testing.T) {
 		browser.Connect()
 
 		page, _ := browser.Page(proto.TargetCreateTarget{URL: "https://example.com"})
-		page.WaitLoad()
+		waitForPageLoad(page)
 
 		result, _ := page.Eval(`() => document.title`)
 		t.Logf("Iteration %d: title=%s", i, result.Value.Str())

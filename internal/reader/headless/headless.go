@@ -105,7 +105,7 @@ func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn f
 	}
 
 	// Wait for the page to finish loading (window.onload).
-	err = page.Timeout(pageNavigationTimeout).WaitLoad()
+	err = waitForPageLoad(page)
 	if err != nil {
 		return "", fmt.Errorf("headless: wait load for %q failed: %w", pageURL, err)
 	}
@@ -116,6 +116,17 @@ func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn f
 	}
 
 	return content, nil
+}
+
+// waitForPageLoad deliberately avoids rod.Page.WaitLoad. WaitLoad installs a
+// cached JavaScript helper object, but Obscura can return null when go-rod
+// creates that object through Runtime.callFunctionOn. Polling readyState uses a
+// plain function call and works with both Obscura and full Chromium CDP servers.
+func waitForPageLoad(page *rod.Page) error {
+	timedPage := page.Timeout(pageNavigationTimeout)
+	defer timedPage.CancelTimeout()
+
+	return timedPage.Wait(rod.Eval(`() => document.readyState === "complete"`))
 }
 
 func closeBrowser(browser *rod.Browser) {
