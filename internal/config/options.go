@@ -485,8 +485,8 @@ func NewConfigOptions() *configOptions {
 				valueType:       boolType,
 			},
 			"OBSCURA_ALLOW_PRIVATE_NETWORKS": {
-				parsedBoolValue: true,
-				rawValue:        "1",
+				parsedBoolValue: false,
+				rawValue:        "0",
 				valueType:       boolType,
 			},
 			"OBSCURA_BINARY_PATH": {

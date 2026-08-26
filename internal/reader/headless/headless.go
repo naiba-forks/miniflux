@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/url"
@@ -19,6 +21,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 	rodutils "github.com/go-rod/rod/lib/utils"
@@ -40,9 +43,13 @@ const (
 	// become reachable after spawning the subprocess.
 	cdpConnectTimeout = 30 * time.Second
 
-	// pageNavigationTimeout caps total time for navigation + JS execution +
-	// content extraction per page.
-	pageNavigationTimeout = 60 * time.Second
+	// cdpCommandTimeout is slightly longer than Obscura's own 60-second
+	// navigation/script/fetch deadlines and 65-second CDP deadline so
+	// server-side errors win races against the Go context deadline.
+	cdpCommandTimeout = 70 * time.Second
+
+	// cdpShutdownTimeout caps graceful target and browser shutdown calls.
+	cdpShutdownTimeout = 5 * time.Second
 
 	// healthCheckInterval is how frequently we poll /json/version while waiting
 	// for Obscura to start.
@@ -52,6 +59,14 @@ const (
 	// sending SIGTERM before resorting to SIGKILL.
 	shutdownGracePeriod = 3 * time.Second
 )
+
+var obscuraTimeoutDefaults = [...]string{
+	"OBSCURA_NAV_TIMEOUT_MS=60000",
+	"OBSCURA_SCRIPT_DEADLINE_MS=60000",
+	"OBSCURA_FETCH_TIMEOUT_MS=60000",
+	"OBSCURA_CDP_COMMAND_TIMEOUT_MS=65000",
+	"OBSCURA_MODULE_BUDGET_MS=10000",
+}
 
 var activeProcessCount atomic.Int64
 
@@ -85,29 +100,24 @@ func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn f
 		return "", fmt.Errorf("headless: %w", err)
 	}
 
-	browser := rod.New().ControlURL(wsURL)
-	err = browser.Connect()
+	browser, websocket, err := connectBrowser(wsURL)
 	if err != nil {
 		return "", fmt.Errorf("headless: CDP connect failed: %w", err)
 	}
-	defer closeBrowser(browser)
+	defer closeBrowser(browser, websocket)
 
 	page, err := browser.Page(proto.TargetCreateTarget{})
 	if err != nil {
 		return "", fmt.Errorf("headless: failed to create page: %w", err)
 	}
-	defer func() { _ = page.Close() }()
+	defer closePage(browser, page)
 
-	// Navigate with timeout.
-	err = page.Timeout(pageNavigationTimeout).Navigate(pageURL)
+	// Obscura extends Page.navigate with waitUntil. Calling it directly avoids
+	// Rod's preliminary Page.stopLoading call and its WaitLoad JS helper, both
+	// of which are incompatible with Obscura v0.2.1.
+	err = navigatePage(page, pageURL)
 	if err != nil {
 		return "", fmt.Errorf("headless: navigation to %q failed: %w", pageURL, err)
-	}
-
-	// Wait for the page to finish loading (window.onload).
-	err = waitForPageLoad(page)
-	if err != nil {
-		return "", fmt.Errorf("headless: wait load for %q failed: %w", pageURL, err)
 	}
 
 	content, err := extractFn(page)
@@ -118,24 +128,120 @@ func renderPageWithExtractor(pageURL, proxyURL string, feedID int64, extractFn f
 	return content, nil
 }
 
-// waitForPageLoad deliberately avoids rod.Page.WaitLoad. WaitLoad installs a
-// cached JavaScript helper object, but Obscura can return null when go-rod
-// creates that object through Runtime.callFunctionOn. Polling readyState uses a
-// plain function call and works with both Obscura and full Chromium CDP servers.
-func waitForPageLoad(page *rod.Page) error {
-	timedPage := page.Timeout(pageNavigationTimeout)
-	defer timedPage.CancelTimeout()
+func connectBrowser(wsURL string) (*rod.Browser, *cdp.WebSocket, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cdpConnectTimeout)
+	defer cancel()
 
-	return timedPage.Wait(rod.Eval(`() => document.readyState === "complete"`))
+	websocket := &cdp.WebSocket{}
+	if err := websocket.Connect(ctx, wsURL, nil); err != nil {
+		return nil, nil, err
+	}
+
+	client := cdp.New().Start(websocket)
+	// Clear ControlURL explicitly in case ROD_URL is set in the environment;
+	// Rod rejects configuring both a URL and a custom CDP client.
+	browser := rod.New().ControlURL("").Client(client)
+	if err := browser.Connect(); err != nil {
+		_ = websocket.Close()
+		return nil, nil, err
+	}
+
+	return browser, websocket, nil
 }
 
-func closeBrowser(browser *rod.Browser) {
+type obscuraNavigateParams struct {
+	URL       string `json:"url"`
+	WaitUntil string `json:"waitUntil"`
+}
+
+type cdpCaller interface {
+	Call(ctx context.Context, sessionID, methodName string, params interface{}) ([]byte, error)
+}
+
+func navigatePage(page *rod.Page, pageURL string) error {
+	ctx, cancel := context.WithTimeout(page.GetContext(), cdpCommandTimeout)
+	defer cancel()
+
+	return navigateWithCDP(ctx, page, page.SessionID, pageURL)
+}
+
+func navigateWithCDP(ctx context.Context, client cdpCaller, sessionID proto.TargetSessionID, pageURL string) error {
+	response, err := client.Call(ctx, string(sessionID), "Page.navigate", obscuraNavigateParams{
+		URL:       pageURL,
+		WaitUntil: "load",
+	})
+	if err != nil {
+		return err
+	}
+
+	var result proto.PageNavigateResult
+	if err := json.Unmarshal(response, &result); err != nil {
+		return fmt.Errorf("decode Page.navigate response: %w", err)
+	}
+	if result.ErrorText != "" {
+		return fmt.Errorf("Page.navigate: %s", result.ErrorText)
+	}
+
+	return nil
+}
+
+// closePage uses Target.closeTarget because Obscura v0.2.1 does not implement
+// the Page.close method used by rod.Page.Close.
+func closePage(browser *rod.Browser, page *rod.Page) {
+	ctx, cancel := context.WithTimeout(browser.GetContext(), cdpShutdownTimeout)
+	defer cancel()
+
+	err := closeTargetWithCDP(ctx, browser, page.TargetID)
+	if err != nil {
+		slog.Warn("headless: failed to close page target",
+			slog.String("target_id", string(page.TargetID)),
+			slog.Any("error", err),
+		)
+	}
+}
+
+func closeTargetWithCDP(ctx context.Context, client cdpCaller, targetID proto.TargetTargetID) error {
+	_, err := client.Call(ctx, "", "Target.closeTarget", proto.TargetCloseTarget{TargetID: targetID})
+	return err
+}
+
+// closeBrowser sends Browser.close and waits for its response before closing
+// the underlying WebSocket. This gives Obscura a graceful CDP shutdown instead
+// of a reset connection.
+func closeBrowser(browser *rod.Browser, websocket *cdp.WebSocket) {
+	if websocket != nil {
+		defer func() {
+			if err := websocket.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				slog.Debug("headless: failed to close CDP WebSocket", slog.Any("error", err))
+			}
+		}()
+	}
+
 	defer func() {
 		if e := recover(); e != nil {
 			slog.Warn("headless: panic while closing browser", slog.Any("error", e))
 		}
 	}()
-	browser.Close()
+
+	if browser == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(browser.GetContext(), cdpShutdownTimeout)
+	defer cancel()
+
+	// Obscura v0.2.1 queues an empty Browser.close response and immediately
+	// closes the server-side socket. Its send task can lose that response, in
+	// which case Rod observes EOF after the command was accepted. The peer has
+	// already closed gracefully, so do not turn that case into a warning.
+	if err := closeBrowserWithCDP(ctx, browser); err != nil && !errors.Is(err, io.EOF) {
+		slog.Warn("headless: graceful browser shutdown failed", slog.Any("error", err))
+	}
+}
+
+func closeBrowserWithCDP(ctx context.Context, client cdpCaller) error {
+	_, err := client.Call(ctx, "", "Browser.close", struct{}{})
+	return err
 }
 
 // RenderPage renders the page with JS, gets the full HTML, then extracts
@@ -248,7 +354,7 @@ func startSubprocess(port int, proxyURL string) (*exec.Cmd, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	cmd.Env = os.Environ()
+	cmd.Env = obscuraEnvironment()
 
 	slog.Debug("headless: starting ephemeral Obscura subprocess",
 		slog.String("binary", binaryPath),
@@ -264,6 +370,17 @@ func startSubprocess(port int, proxyURL string) (*exec.Cmd, error) {
 	activeProcessCount.Add(1)
 
 	return cmd, nil
+}
+
+func obscuraEnvironment() []string {
+	environment := os.Environ()
+	for _, defaultValue := range obscuraTimeoutDefaults {
+		key, _, _ := strings.Cut(defaultValue, "=")
+		if _, configured := os.LookupEnv(key); !configured {
+			environment = append(environment, defaultValue)
+		}
+	}
+	return environment
 }
 
 func redactProxyURL(proxyURL string) string {

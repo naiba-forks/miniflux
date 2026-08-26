@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/cdp"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 
@@ -32,9 +33,10 @@ func startObscura(t *testing.T, port int) *exec.Cmd {
 
 	binaryPath := testObscuraBinaryPath(t)
 
-	cmd := exec.Command(binaryPath, "serve", "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port), "--stealth", "--allow-private-network")
+	cmd := exec.Command(binaryPath, "serve", "--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port), "--stealth")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = obscuraEnvironment()
 
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("Failed to start Obscura: %v", err)
@@ -53,6 +55,35 @@ func startObscura(t *testing.T, port int) *exec.Cmd {
 	cmd.Wait()
 	t.Fatal("Obscura CDP server did not become ready within 15s")
 	return nil
+}
+
+func connectTestBrowser(t *testing.T, port int) (*rod.Browser, *cdp.WebSocket) {
+	t.Helper()
+
+	wsURL, err := launcher.ResolveURL(fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("Failed to resolve CDP URL: %v", err)
+	}
+
+	browser, websocket, err := connectBrowser(wsURL)
+	if err != nil {
+		t.Fatalf("Failed to connect to Obscura CDP: %v", err)
+	}
+	return browser, websocket
+}
+
+func openTestPage(t *testing.T, browser *rod.Browser, pageURL string) *rod.Page {
+	t.Helper()
+
+	page, err := browser.Page(proto.TargetCreateTarget{})
+	if err != nil {
+		t.Fatalf("Failed to create page: %v", err)
+	}
+	if err := navigatePage(page, pageURL); err != nil {
+		closePage(browser, page)
+		t.Fatalf("Failed to navigate page: %v", err)
+	}
+	return page
 }
 
 func testObscuraBinaryPath(t *testing.T) string {
@@ -98,23 +129,11 @@ func TestObscuraCDPConnection(t *testing.T) {
 	}
 	t.Logf("CDP WebSocket URL: %s", wsURL)
 
-	browser := rod.New().ControlURL(wsURL)
-	err = browser.Connect()
-	if err != nil {
-		t.Fatalf("Failed to connect to Obscura CDP: %v", err)
-	}
-	defer browser.Close()
+	browser, websocket := connectTestBrowser(t, port)
+	defer closeBrowser(browser, websocket)
 
-	page, err := browser.Page(proto.TargetCreateTarget{URL: "https://example.com"})
-	if err != nil {
-		t.Fatalf("Failed to create page: %v", err)
-	}
-	defer page.Close()
-
-	err = waitForPageLoad(page)
-	if err != nil {
-		t.Fatalf("WaitLoad failed: %v", err)
-	}
+	page := openTestPage(t, browser, "https://example.com")
+	defer closePage(browser, page)
 
 	result, err := page.Eval(`() => document.title`)
 	if err != nil {
@@ -136,28 +155,11 @@ func TestReadableContentExtraction(t *testing.T) {
 		cmd.Wait()
 	}()
 
-	wsURL, err := launcher.ResolveURL(fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		t.Fatalf("Failed to resolve CDP URL: %v", err)
-	}
+	browser, websocket := connectTestBrowser(t, port)
+	defer closeBrowser(browser, websocket)
 
-	browser := rod.New().ControlURL(wsURL)
-	err = browser.Connect()
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer browser.Close()
-
-	page, err := browser.Page(proto.TargetCreateTarget{URL: "https://example.com"})
-	if err != nil {
-		t.Fatalf("Failed to create page: %v", err)
-	}
-	defer page.Close()
-
-	err = waitForPageLoad(page)
-	if err != nil {
-		t.Fatalf("WaitLoad failed: %v", err)
-	}
+	page := openTestPage(t, browser, "https://example.com")
+	defer closePage(browser, page)
 
 	content, err := extractReadableContent(page, "https://example.com")
 	if err != nil {
@@ -183,28 +185,11 @@ func TestFullHTMLExtraction(t *testing.T) {
 		cmd.Wait()
 	}()
 
-	wsURL, err := launcher.ResolveURL(fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		t.Fatalf("Failed to resolve CDP URL: %v", err)
-	}
+	browser, websocket := connectTestBrowser(t, port)
+	defer closeBrowser(browser, websocket)
 
-	browser := rod.New().ControlURL(wsURL)
-	err = browser.Connect()
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer browser.Close()
-
-	page, err := browser.Page(proto.TargetCreateTarget{URL: "https://example.com"})
-	if err != nil {
-		t.Fatalf("Failed to create page: %v", err)
-	}
-	defer page.Close()
-
-	err = waitForPageLoad(page)
-	if err != nil {
-		t.Fatalf("WaitLoad failed: %v", err)
-	}
+	page := openTestPage(t, browser, "https://example.com")
+	defer closePage(browser, page)
 
 	html, err := extractFullHTML(page)
 	if err != nil {
@@ -256,13 +241,6 @@ func TestRedactProxyURL(t *testing.T) {
 	}
 }
 
-func killAndWait(cmd *exec.Cmd) {
-	if cmd != nil && cmd.Process != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
-	}
-}
-
 func isProcessAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
@@ -287,28 +265,11 @@ func TestProcessCleanupAfterCDPDisconnect(t *testing.T) {
 	pid := cmd.Process.Pid
 	activeProcessCount.Add(1)
 
-	wsURL, err := launcher.ResolveURL(fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		killAndWait(cmd)
-		t.Fatalf("Failed to resolve CDP URL: %v", err)
-	}
+	browser, websocket := connectTestBrowser(t, port)
+	page := openTestPage(t, browser, "https://example.com")
 
-	browser := rod.New().ControlURL(wsURL)
-	if err := browser.Connect(); err != nil {
-		killAndWait(cmd)
-		t.Fatalf("Connect failed: %v", err)
-	}
-
-	page, err := browser.Page(proto.TargetCreateTarget{URL: "https://example.com"})
-	if err != nil {
-		browser.Close()
-		killAndWait(cmd)
-		t.Fatalf("Page creation failed: %v", err)
-	}
-	waitForPageLoad(page)
-
-	_ = page.Close()
-	browser.Close()
+	closePage(browser, page)
+	closeBrowser(browser, websocket)
 	stopSubprocess(cmd)
 
 	time.Sleep(500 * time.Millisecond)
@@ -351,18 +312,14 @@ func TestMultipleSequentialRenders(t *testing.T) {
 		cmd := startObscura(t, port)
 		activeProcessCount.Add(1)
 
-		wsURL, _ := launcher.ResolveURL(fmt.Sprintf("127.0.0.1:%d", port))
-		browser := rod.New().ControlURL(wsURL)
-		browser.Connect()
-
-		page, _ := browser.Page(proto.TargetCreateTarget{URL: "https://example.com"})
-		waitForPageLoad(page)
+		browser, websocket := connectTestBrowser(t, port)
+		page := openTestPage(t, browser, "https://example.com")
 
 		result, _ := page.Eval(`() => document.title`)
 		t.Logf("Iteration %d: title=%s", i, result.Value.Str())
 
-		_ = page.Close()
-		browser.Close()
+		closePage(browser, page)
+		closeBrowser(browser, websocket)
 		stopSubprocess(cmd)
 	}
 

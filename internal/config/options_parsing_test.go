@@ -901,8 +901,8 @@ func TestMetricsUsernameOptionParsing(t *testing.T) {
 func TestObscuraOptionParsing(t *testing.T) {
 	configParser := NewConfigParser()
 
-	if !configParser.options.ObscuraAllowPrivateNetworks() {
-		t.Fatalf("Expected OBSCURA_ALLOW_PRIVATE_NETWORKS to be enabled by default")
+	if configParser.options.ObscuraAllowPrivateNetworks() {
+		t.Fatalf("Expected OBSCURA_ALLOW_PRIVATE_NETWORKS to be disabled by default")
 	}
 
 	if configParser.options.ObscuraBinaryPath() != "/usr/bin/obscura" {
@@ -918,7 +918,7 @@ func TestObscuraOptionParsing(t *testing.T) {
 	}
 
 	if err := configParser.parseLines([]string{
-		"OBSCURA_ALLOW_PRIVATE_NETWORKS=0",
+		"OBSCURA_ALLOW_PRIVATE_NETWORKS=1",
 		"OBSCURA_BINARY_PATH=/opt/obscura",
 		"OBSCURA_ENABLED=1",
 		"OBSCURA_STEALTH=0",
@@ -926,8 +926,8 @@ func TestObscuraOptionParsing(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	if configParser.options.ObscuraAllowPrivateNetworks() {
-		t.Fatalf("Expected OBSCURA_ALLOW_PRIVATE_NETWORKS to be disabled")
+	if !configParser.options.ObscuraAllowPrivateNetworks() {
+		t.Fatalf("Expected OBSCURA_ALLOW_PRIVATE_NETWORKS to be enabled")
 	}
 
 	if configParser.options.ObscuraBinaryPath() != "/opt/obscura" {

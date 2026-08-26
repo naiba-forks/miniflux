@@ -21,14 +21,23 @@ LABEL org.opencontainers.image.source=https://github.com/naiba-forks/miniflux
 
 EXPOSE 8080
 ENV LISTEN_ADDR=0.0.0.0:8080
-# TARGETARCH is provided by Docker buildx (amd64/arm64), map to Obscura release naming (x86_64/aarch64)
+# TARGETARCH is provided by Docker buildx (amd64/arm64). Miniflux only needs
+# HTML/JS execution, so use Obscura's smaller no-render build with the full
+# stealth feature compiled in.
 ARG TARGETARCH
+ARG OBSCURA_VERSION=v0.2.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tzdata tini nodejs curl \
     && rm -rf /var/lib/apt/lists/* \
     && ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x86_64/;s/arm64/aarch64/') \
+    && case "${ARCH}" in \
+         x86_64) OBSCURA_SHA256=d3f6b73be9081e5f85f3d1069ffd66dd62f1265caddd54cb5431e9b4cceb1e4d ;; \
+         aarch64) OBSCURA_SHA256=500bf6fa74b802d120d04846f5c4f2f8933f71efcd4673005f61b08ecc1ddbfe ;; \
+         *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+       esac \
     && curl -fsSL -o /tmp/obscura.tar.gz \
-       "https://github.com/h4ckf0r0day/obscura/releases/latest/download/obscura-${ARCH}-linux.tar.gz" \
+       "https://github.com/h4ckf0r0day/obscura/releases/download/${OBSCURA_VERSION}/obscura-${ARCH}-linux-no-render-stealth.tar.gz" \
+    && echo "${OBSCURA_SHA256}  /tmp/obscura.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/obscura.tar.gz -C /usr/bin obscura obscura-worker \
     && rm /tmp/obscura.tar.gz \
     && chmod +x /usr/bin/obscura /usr/bin/obscura-worker

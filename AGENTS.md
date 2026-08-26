@@ -16,7 +16,8 @@
   - Defuddle 通过 node 子进程运行，浏览器只负责 JS 渲染和 DOM 输出
   - Defuddle 在 Docker 构建时从 GitHub clone 即时 build，产物安装到 `/usr/share/miniflux/defuddle/`
   - Go 代码通过 `node -e` 内联脚本调用，30 秒超时，失败 fallback 到 `innerText`
-- 资源回收：`activeProcessCount` 原子计数，`browser.Close()` 加 `recover()` 防 crash 后 panic
+- Rod/Obscura 兼容层：导航直接发带 `waitUntil: load` 的 `Page.navigate`；页面关闭用 `Target.closeTarget`；会话先发 `Browser.close` 再断开 WebSocket
+- 资源回收：`activeProcessCount` 原子计数，CDP 关闭流程加 `recover()` 防 crash 后 panic
 - 不 fallback：JS 渲染启用时，headless 失败不会 fallback 到 HTTP scraper（避免掩盖真实错误），与 `handler.go` 列表页逻辑一致
 - RSS feed：`processor.go` 中 `UseJSRender && ObscuraEnabled` 时用 headless，失败直接跳过不 fallback
 - Web Scraper feed：`handler.go` 中列表页渲染用 `RenderPageHTML` + `ScrapeRenderedHTML`；条目全文在 `processor.go` 中同样走 headless 不 fallback

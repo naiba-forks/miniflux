@@ -28,6 +28,8 @@ Fork Features
 - Two-stage content extraction: Obscura renders the page, then [Defuddle](https://github.com/kepano/defuddle) extracts the article content server-side.
 - Works with both RSS feeds (fetch original content) and Web Scraper feeds (render listing pages + article detail pages).
 - Per-feed proxy support (`--proxy`); render failures are surfaced instead of falling back to standard HTTP fetching.
+- The Docker image pins Obscura v0.2.1's `no-render-stealth` build; Rod remains on the latest stable v0.116.2.
+- Private/local network access is blocked by default. Set `OBSCURA_ALLOW_PRIVATE_NETWORKS=1` only for feeds that intentionally require it.
 
 Upstream Features
 -----------------
