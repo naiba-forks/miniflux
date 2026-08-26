@@ -4,6 +4,7 @@
 package config // import "miniflux.app/v2/internal/config"
 
 import (
+	"errors"
 	"maps"
 	"net"
 	"net/url"
@@ -36,17 +37,17 @@ const (
 
 type configValue struct {
 	parsedStringValue string
-	parsedBoolValue   bool
 	parsedIntValue    int
 	parsedInt64Value  int64
 	parsedDuration    time.Duration
 	parsedStringList  []string
 	parsedURLValue    *url.URL
 	parsedBytesValue  []byte
+	parsedBoolValue   bool
 
+	secret    bool
 	rawValue  string
 	valueType configValueType
-	secret    bool
 	targetKey string
 
 	validator func(string) error
@@ -383,7 +384,11 @@ func NewConfigOptions() *configOptions {
 				rawValue:         "image",
 				valueType:        stringListType,
 				validator: func(rawValue string) error {
-					return validateListChoices(strings.Split(rawValue, ","), []string{"image", "video", "audio"})
+					resourceTypes := parseStringListValue(rawValue, nil)
+					if len(resourceTypes) == 0 {
+						return errors.New("at least one resource type is required")
+					}
+					return validateListChoices(resourceTypes, []string{"image", "video", "audio"})
 				},
 			},
 			"METRICS_ALLOWED_NETWORKS": {
@@ -549,6 +554,9 @@ func NewConfigOptions() *configOptions {
 				parsedIntValue: 1,
 				rawValue:       "1",
 				valueType:      intType,
+				validator: func(rawValue string) error {
+					return validateGreaterOrEqualThan(rawValue, 1)
+				},
 			},
 			"SCHEDULER_ENTRY_FREQUENCY_MAX_INTERVAL": {
 				parsedDuration: 24 * time.Hour,
@@ -587,7 +595,11 @@ func NewConfigOptions() *configOptions {
 				rawValue:         "",
 				valueType:        stringListType,
 				validator: func(rawValue string) error {
-					for ip := range strings.SplitSeq(rawValue, ",") {
+					networks := parseStringListValue(rawValue, nil)
+					if len(networks) == 0 {
+						return errors.New("at least one CIDR notation network is required")
+					}
+					for _, ip := range networks {
 						if _, _, err := net.ParseCIDR(ip); err != nil {
 							return err
 						}

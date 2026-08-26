@@ -126,6 +126,26 @@ func TestRewriteIncorrectYoutubeLink(t *testing.T) {
 	}
 }
 
+func TestRewriteYoutubeLinkRejectsLookalikeDomain(t *testing.T) {
+	config.Opts = config.NewConfigOptions()
+
+	controlEntry := &model.Entry{
+		URL:     "https://notyoutube.com/watch?v=1234",
+		Title:   `A title`,
+		Content: `Video Description`,
+	}
+	testEntry := &model.Entry{
+		URL:     "https://notyoutube.com/watch?v=1234",
+		Title:   `A title`,
+		Content: `Video Description`,
+	}
+	ApplyContentRewriteRules(testEntry, `add_youtube_video`)
+
+	if !reflect.DeepEqual(testEntry, controlEntry) {
+		t.Errorf(`A domain that merely ends in "youtube.com" must not be treated as YouTube: got "%+v" instead of "%+v"`, testEntry, controlEntry)
+	}
+}
+
 func TestRewriteYoutubeLinkAndCustomEmbedURL(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("YOUTUBE_EMBED_URL_OVERRIDE", "https://invidious.custom/embed/")
@@ -950,6 +970,29 @@ func TestRewriteRemoveTables(t *testing.T) {
 		URL:     "https://example.org/article",
 		Title:   `A title`,
 		Content: `<table class="container"><tbody><tr><td><p>Test</p><table class="row"><tbody><tr><td><p>Hello World!</p></td><td><p>Test</p></td></tr></tbody></table></td></tr></tbody></table>`,
+	}
+	ApplyContentRewriteRules(testEntry, `remove_tables`)
+
+	if !reflect.DeepEqual(testEntry, controlEntry) {
+		t.Errorf(`Not expected output: got "%+v" instead of "%+v"`, testEntry, controlEntry)
+	}
+}
+
+func TestRewriteRemoveTablesKeepsSurroundingContentOrder(t *testing.T) {
+	// Regression test for https://github.com/miniflux/v2/issues/3110
+	// When a table is unwrapped, its content and the content surrounding it
+	// must keep their original document order. Previously the unwrapped
+	// content was appended to the end of the parent, so anything after the
+	// table (and the table content itself) ended up reordered.
+	controlEntry := &model.Entry{
+		URL:     "https://example.org/article",
+		Title:   `A title`,
+		Content: `<h1>Header</h1><p>Intro</p><img src="https://example.org/image.png"/><p>Outro</p>`,
+	}
+	testEntry := &model.Entry{
+		URL:     "https://example.org/article",
+		Title:   `A title`,
+		Content: `<h1>Header</h1><table><tbody><tr><td><p>Intro</p><img src="https://example.org/image.png"/></td></tr></tbody></table><p>Outro</p>`,
 	}
 	ApplyContentRewriteRules(testEntry, `remove_tables`)
 

@@ -28,6 +28,9 @@ func startDaemon(store *storage.Storage) {
 	signal.Notify(stop, os.Interrupt)
 	signal.Notify(stop, syscall.SIGTERM)
 
+	reload := make(chan os.Signal, 1)
+	signal.Notify(reload, syscall.SIGHUP)
+
 	pool := worker.NewPool(store, config.Opts.WorkerPoolSize())
 
 	if config.Opts.HasSchedulerService() && !config.Opts.HasMaintenanceMode() {
@@ -38,8 +41,9 @@ func startDaemon(store *storage.Storage) {
 	go integration.StartAISummaryWorker(store, stopAISummaryWorker)
 
 	var httpServers []*http.Server
+	var certReloadFn func()
 	if config.Opts.HasHTTPService() {
-		httpServers = server.StartWebServer(store, pool)
+		httpServers, certReloadFn = server.StartWebServer(store, pool)
 	}
 
 	metricsCtx, cancelMetrics := context.WithCancel(context.Background())
@@ -78,30 +82,41 @@ func startDaemon(store *storage.Storage) {
 		}
 	}
 
-	<-stop
-	slog.Debug("Shutting down the process")
-	close(stopAISummaryWorker)
-	cancelMetrics()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	for {
+		select {
+		case <-stop:
+			slog.Debug("Shutting down the process")
+			close(stopAISummaryWorker)
+			cancelMetrics()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 
-	if len(httpServers) > 0 {
-		slog.Debug("Shutting down HTTP servers...")
-		for _, server := range httpServers {
-			if server != nil {
-				if err := server.Shutdown(ctx); err != nil {
-					slog.Error("HTTP server shutdown error", slog.Any("error", err), slog.String("addr", server.Addr))
+			if len(httpServers) > 0 {
+				slog.Debug("Shutting down HTTP servers...")
+				for _, srv := range httpServers {
+					if srv != nil {
+						if err := srv.Shutdown(ctx); err != nil {
+							slog.Error("HTTP server shutdown error", slog.Any("error", err), slog.String("addr", srv.Addr))
+						}
+					}
 				}
+				slog.Debug("All HTTP servers shut down.")
+			} else {
+				slog.Debug("No HTTP servers to shut down.")
+			}
+
+			slog.Debug("Shutting down worker pool...")
+			pool.Shutdown()
+			slog.Debug("Worker pool shut down.")
+
+			slog.Debug("Process gracefully stopped")
+			return
+
+		case <-reload:
+			slog.Info("Received SIGHUP, reloading TLS certificates")
+			if certReloadFn != nil {
+				certReloadFn()
 			}
 		}
-		slog.Debug("All HTTP servers shut down.")
-	} else {
-		slog.Debug("No HTTP servers to shut down.")
 	}
-
-	slog.Debug("Shutting down worker pool...")
-	pool.Shutdown()
-	slog.Debug("Worker pool shut down.")
-
-	slog.Debug("Process gracefully stopped")
 }

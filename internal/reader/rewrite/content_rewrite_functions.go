@@ -265,7 +265,8 @@ func getYoutubVideoIDFromURL(entryURL string) string {
 		return ""
 	}
 
-	if !strings.HasSuffix(u.Hostname(), "youtube.com") {
+	hostname := u.Hostname()
+	if hostname != "youtube.com" && !strings.HasSuffix(hostname, ".youtube.com") {
 		return ""
 	}
 
@@ -508,8 +509,11 @@ func removeTables(entryContent string) string {
 				break
 			}
 
-			loopElement.Parent().AppendHtml(innerHtml)
-			loopElement.Remove()
+			// Replace the element with its own content in place, so the
+			// surrounding content keeps its original document order.
+			// Appending to the parent would move the unwrapped content to
+			// the end of the parent instead.
+			loopElement.ReplaceWithHtml(innerHtml)
 		}
 	}
 

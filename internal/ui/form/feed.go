@@ -23,13 +23,13 @@ type FeedForm struct {
 	KeeplistRules               string
 	BlockFilterEntryRules       string
 	KeepFilterEntryRules        string
-	Crawler                     bool
-	IgnoreEntryUpdates          bool
 	UserAgent                   string
 	Cookie                      string
 	CategoryID                  int64
 	Username                    string
 	Password                    string
+	AppriseServiceURLs          string
+	WebhookURL                  string
 	IgnoreHTTPCache             bool
 	AllowSelfSignedCertificates bool
 	FetchViaProxy               bool
@@ -37,8 +37,6 @@ type FeedForm struct {
 	NoMediaPlayer               bool
 	HideGlobally                bool
 	CategoryHidden              bool // Category has "hide_globally"
-	AppriseServiceURLs          string
-	WebhookURL                  string
 	DisableHTTP2                bool
 	NtfyEnabled                 bool
 	NtfyPriority                int
@@ -54,6 +52,8 @@ type FeedForm struct {
 	WebScraperNextPageSelector  string
 	WebScraperMaxItems          int
 	UseJSRender                 bool
+	Crawler                     bool
+	IgnoreEntryUpdates          bool
 }
 
 // Merge updates the fields of the given feed.

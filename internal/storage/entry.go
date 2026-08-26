@@ -177,7 +177,8 @@ func (s *Storage) createEntry(tx *sql.Tx, entry *model.Entry) error {
 				document_vectors,
 				tags,
 				ai_summary,
-				ai_score
+				ai_score,
+				language
 			)
 		SELECT
 			$1,
@@ -194,7 +195,8 @@ func (s *Storage) createEntry(tx *sql.Tx, entry *model.Entry) error {
 			setweight(to_tsvector($11), 'A') || setweight(to_tsvector($12), 'B'),
 			$13,
 			$14,
-			$15
+			$15,
+			$16
 		WHERE NOT EXISTS (
 			SELECT 1 FROM entry_tombstones WHERE feed_id=$9 AND hash=$2
 		)
@@ -218,6 +220,7 @@ func (s *Storage) createEntry(tx *sql.Tx, entry *model.Entry) error {
 		pq.Array(entry.Tags),
 		entry.AISummary,
 		entry.AIScore,
+		entry.Language,
 	).Scan(
 		&entry.ID,
 		&entry.Status,
@@ -261,7 +264,8 @@ func (s *Storage) updateEntry(tx *sql.Tx, entry *model.Entry) error {
 			document_vectors = setweight(to_tsvector($7), 'A') || setweight(to_tsvector($8), 'B'),
 			tags=$12,
 			ai_summary=$13,
-			ai_score=$14
+			ai_score=$14,
+			language=$15
 		WHERE
 			user_id=$9 AND feed_id=$10 AND hash=$11
 		RETURNING
@@ -283,6 +287,7 @@ func (s *Storage) updateEntry(tx *sql.Tx, entry *model.Entry) error {
 		pq.Array(entry.Tags),
 		entry.AISummary,
 		entry.AIScore,
+		entry.Language,
 	).Scan(&entry.ID)
 	if err != nil {
 		return fmt.Errorf(`store: unable to update entry %q: %v`, entry.URL, err)
@@ -625,7 +630,9 @@ func (s *Storage) MarkAllAsReadBeforeDate(userID int64, before time.Time) error 
 	return nil
 }
 
-// MarkGloballyVisibleFeedsAsRead updates all user entries to the read status.
+// MarkGloballyVisibleFeedsAsRead marks as read the unread entries that are
+// visible in the global unread view, i.e. those belonging to a feed and a
+// category that are both not hidden globally.
 func (s *Storage) MarkGloballyVisibleFeedsAsRead(userID int64) error {
 	query := `
 		UPDATE
@@ -635,13 +642,15 @@ func (s *Storage) MarkGloballyVisibleFeedsAsRead(userID int64) error {
 			changed_at=now()
 		FROM
 			feeds
+			JOIN categories ON (categories.id = feeds.category_id)
 		WHERE
 			entries.feed_id = feeds.id
 			AND entries.user_id=$2
 			AND entries.status=$3
-			AND feeds.hide_globally=$4
+			AND feeds.hide_globally IS FALSE
+			AND categories.hide_globally IS FALSE
 	`
-	result, err := s.db.Exec(query, model.EntryStatusRead, userID, model.EntryStatusUnread, false)
+	result, err := s.db.Exec(query, model.EntryStatusRead, userID, model.EntryStatusUnread)
 	if err != nil {
 		return fmt.Errorf(`store: unable to mark globally visible feeds as read: %v`, err)
 	}

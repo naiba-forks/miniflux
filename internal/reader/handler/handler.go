@@ -49,7 +49,11 @@ func CreateFeedFromSubscriptionDiscovery(store *storage.Storage, userID int64, f
 		slog.String("proxy_url", feedCreationRequest.ProxyURL),
 	)
 
-	if !store.CategoryIDExists(userID, feedCreationRequest.CategoryID) {
+	categoryExists, storeErr := store.CategoryIDExists(userID, feedCreationRequest.CategoryID)
+	if storeErr != nil {
+		return nil, locale.NewLocalizedErrorWrapper(storeErr, "error.database_error", storeErr)
+	}
+	if !categoryExists {
 		return nil, locale.NewLocalizedErrorWrapper(ErrCategoryNotFound, "error.category_not_found")
 	}
 
@@ -113,7 +117,11 @@ func CreateFeed(store *storage.Storage, userID int64, feedCreationRequest *model
 		slog.String("proxy_url", feedCreationRequest.ProxyURL),
 	)
 
-	if !store.CategoryIDExists(userID, feedCreationRequest.CategoryID) {
+	categoryExists, storeErr := store.CategoryIDExists(userID, feedCreationRequest.CategoryID)
+	if storeErr != nil {
+		return nil, locale.NewLocalizedErrorWrapper(storeErr, "error.database_error", storeErr)
+	}
+	if !categoryExists {
 		return nil, locale.NewLocalizedErrorWrapper(ErrCategoryNotFound, "error.category_not_found")
 	}
 
@@ -177,6 +185,7 @@ func CreateFeed(store *storage.Storage, userID int64, feedCreationRequest *model
 	subscription.BlockFilterEntryRules = feedCreationRequest.BlockFilterEntryRules
 	subscription.KeepFilterEntryRules = feedCreationRequest.KeepFilterEntryRules
 	subscription.HideGlobally = feedCreationRequest.HideGlobally
+	subscription.NoMediaPlayer = feedCreationRequest.NoMediaPlayer
 	subscription.EtagHeader = responseHandler.ETag()
 	subscription.LastModifiedHeader = responseHandler.LastModified()
 	subscription.FeedURL = responseHandler.EffectiveURL()
@@ -459,7 +468,7 @@ func RefreshFeed(store *storage.Storage, userID, feedID int64, forceRefresh bool
 
 		originalFeed.EtagHeader = responseHandler.ETag()
 		originalFeed.LastModifiedHeader = responseHandler.LastModified()
-
+		originalFeed.Language = updatedFeed.Language
 		originalFeed.IconURL = updatedFeed.IconURL
 		iconChecker := icon.NewIconChecker(store, originalFeed)
 		if forceRefresh {

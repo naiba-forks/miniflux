@@ -1549,10 +1549,15 @@ var migrations = [...]func(tx *sql.Tx) error{
 			CREATE INDEX entry_tombstones_deleted_at_idx
 				ON entry_tombstones (deleted_at);
 
+			-- Some databases contain orphaned entries whose feed is gone,
+			-- e.g. restored from a dump without foreign key enforcement.
+			-- Skip them: their tombstones would be useless anyway, and the
+			-- rows are deleted just below.
 			INSERT INTO entry_tombstones (feed_id, hash, deleted_at)
 				SELECT feed_id, hash, changed_at
 				FROM entries
 				WHERE status = 'removed' AND hash <> ''
+					AND feed_id IN (SELECT id FROM feeds)
 				ON CONFLICT (feed_id, hash) DO NOTHING;
 
 			DELETE FROM entries WHERE status = 'removed';
@@ -1612,6 +1617,35 @@ var migrations = [...]func(tx *sql.Tx) error{
 			DROP INDEX IF EXISTS enclosures_user_entry_url_unique_idx;
 			CREATE UNIQUE INDEX enclosures_user_entry_url_unique_idx
 				ON enclosures (user_id, entry_id, encode(sha256(url::bytea), 'hex'));
+		`)
+		return err
+	},
+	func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec(`
+			ALTER TABLE feeds ADD COLUMN language text not null default '';
+			ALTER TABLE entries ADD COLUMN language text not null default '';
+		`)
+		return err
+	},
+	func(tx *sql.Tx) (err error) {
+		// entries_user_status_changed_idx(user_id, status, changed_at) is
+		// redundant: it is a strict prefix of
+		// entries_user_status_changed_published_idx(user_id, status,
+		// changed_at, published_at), which serves every query the shorter
+		// index could (including the history page and changed_at pagination).
+		_, err = tx.Exec(`
+			DROP INDEX IF EXISTS entries_user_status_changed_idx;
+		`)
+		return err
+	},
+	func(tx *sql.Tx) (err error) {
+		// Index the raw SHA-256 digest (32 bytes) instead of its hex text
+		// encoding (64 bytes) to roughly halve this index on disk. The
+		// ON CONFLICT clause in createEnclosure uses the same expression.
+		_, err = tx.Exec(`
+			DROP INDEX IF EXISTS enclosures_user_entry_url_unique_idx;
+			CREATE UNIQUE INDEX enclosures_user_entry_url_unique_idx
+				ON enclosures (user_id, entry_id, sha256(url::bytea));
 		`)
 		return err
 	},

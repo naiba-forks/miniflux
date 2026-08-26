@@ -62,6 +62,8 @@ func (c *integrationTestConfig) genRandomUsername() string {
 }
 
 func TestIncorrectEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -79,6 +81,8 @@ func TestIncorrectEndpoint(t *testing.T) {
 }
 
 func TestHealthcheckEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -91,6 +95,8 @@ func TestHealthcheckEndpoint(t *testing.T) {
 }
 
 func TestVersionEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -132,6 +138,8 @@ func TestVersionEndpoint(t *testing.T) {
 }
 
 func TestInvalidCredentials(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -149,6 +157,8 @@ func TestInvalidCredentials(t *testing.T) {
 }
 
 func TestGetMeEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -166,6 +176,8 @@ func TestGetMeEndpoint(t *testing.T) {
 }
 
 func TestGetUsersEndpointAsAdmin(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -231,6 +243,8 @@ func TestGetUsersEndpointAsAdmin(t *testing.T) {
 }
 
 func TestGetUsersEndpointAsRegularUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -251,6 +265,8 @@ func TestGetUsersEndpointAsRegularUser(t *testing.T) {
 }
 
 func TestCreateUserEndpointAsAdmin(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -311,6 +327,8 @@ func TestCreateUserEndpointAsAdmin(t *testing.T) {
 }
 
 func TestCreateUserEndpointAsRegularUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -331,6 +349,8 @@ func TestCreateUserEndpointAsRegularUser(t *testing.T) {
 }
 
 func TestCannotCreateDuplicateUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -344,6 +364,8 @@ func TestCannotCreateDuplicateUser(t *testing.T) {
 }
 
 func TestRemoveUserEndpointAsAdmin(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -361,6 +383,8 @@ func TestRemoveUserEndpointAsAdmin(t *testing.T) {
 }
 
 func TestRemoveUserEndpointAsRegularUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -381,6 +405,8 @@ func TestRemoveUserEndpointAsRegularUser(t *testing.T) {
 }
 
 func TestGetUserByIDEndpointAsAdmin(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -455,6 +481,8 @@ func TestGetUserByIDEndpointAsAdmin(t *testing.T) {
 }
 
 func TestGetUserByIDEndpointAsRegularUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -475,6 +503,8 @@ func TestGetUserByIDEndpointAsRegularUser(t *testing.T) {
 }
 
 func TestGetUserByUsernameEndpointAsAdmin(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -545,6 +575,8 @@ func TestGetUserByUsernameEndpointAsAdmin(t *testing.T) {
 }
 
 func TestGetUserByUsernameEndpointAsRegularUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -565,6 +597,8 @@ func TestGetUserByUsernameEndpointAsRegularUser(t *testing.T) {
 }
 
 func TestUpdateUserEndpointByChangingDefaultTheme(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -594,6 +628,8 @@ func TestUpdateUserEndpointByChangingDefaultTheme(t *testing.T) {
 }
 
 func TestUpdateUserEndpointByChangingExternalFonts(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -623,6 +659,8 @@ func TestUpdateUserEndpointByChangingExternalFonts(t *testing.T) {
 }
 
 func TestUpdateUserEndpointByChangingExternalFontsWithInvalidValue(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -647,6 +685,8 @@ func TestUpdateUserEndpointByChangingExternalFontsWithInvalidValue(t *testing.T)
 }
 
 func TestUpdateUserEndpointByChangingCustomJS(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -676,6 +716,8 @@ func TestUpdateUserEndpointByChangingCustomJS(t *testing.T) {
 }
 
 func TestUpdateUserEndpointByChangingDefaultThemeToInvalidValue(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -701,6 +743,8 @@ func TestUpdateUserEndpointByChangingDefaultThemeToInvalidValue(t *testing.T) {
 }
 
 func TestRegularUsersCannotUpdateOtherUsers(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -731,6 +775,8 @@ func TestRegularUsersCannotUpdateOtherUsers(t *testing.T) {
 }
 
 func TestAPIKeysEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -841,6 +887,8 @@ func TestAPIKeysEndpoint(t *testing.T) {
 }
 
 func TestMarkUserAsReadEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -878,6 +926,8 @@ func TestMarkUserAsReadEndpoint(t *testing.T) {
 }
 
 func TestCannotMarkUserAsReadAsOtherUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -903,6 +953,8 @@ func TestCannotMarkUserAsReadAsOtherUser(t *testing.T) {
 }
 
 func TestCreateCategoryEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -942,6 +994,8 @@ func TestCreateCategoryEndpoint(t *testing.T) {
 }
 
 func TestCreateCategoryWithEmptyTitle(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -955,6 +1009,8 @@ func TestCreateCategoryWithEmptyTitle(t *testing.T) {
 }
 
 func TestCannotCreateDuplicatedCategory(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -981,6 +1037,8 @@ func TestCannotCreateDuplicatedCategory(t *testing.T) {
 }
 
 func TestCreateCategoryWithOptions(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1023,6 +1081,8 @@ func TestCreateCategoryWithOptions(t *testing.T) {
 }
 
 func TestUpdateCategoryEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1067,6 +1127,8 @@ func TestUpdateCategoryEndpoint(t *testing.T) {
 }
 
 func TestUpdateCategoryWithOptions(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1148,6 +1210,8 @@ func TestUpdateCategoryWithOptions(t *testing.T) {
 }
 
 func TestUpdateInexistingCategory(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1160,6 +1224,8 @@ func TestUpdateInexistingCategory(t *testing.T) {
 	}
 }
 func TestDeleteCategoryEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1187,6 +1253,8 @@ func TestDeleteCategoryEndpoint(t *testing.T) {
 }
 
 func TestCannotDeleteInexistingCategory(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1200,6 +1268,8 @@ func TestCannotDeleteInexistingCategory(t *testing.T) {
 }
 
 func TestCannotDeleteCategoryOfAnotherUser(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1226,6 +1296,8 @@ func TestCannotDeleteCategoryOfAnotherUser(t *testing.T) {
 }
 
 func TestGetCategoriesEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1319,6 +1391,8 @@ func TestGetCategoriesEndpoint(t *testing.T) {
 }
 
 func TestMarkCategoryAsReadEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1363,6 +1437,8 @@ func TestMarkCategoryAsReadEndpoint(t *testing.T) {
 }
 
 func TestCreateFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1396,6 +1472,8 @@ func TestCreateFeedEndpoint(t *testing.T) {
 }
 
 func TestCannotCreateDuplicatedFeed(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1430,7 +1508,59 @@ func TestCannotCreateDuplicatedFeed(t *testing.T) {
 	}
 }
 
+func TestFeedCreationWithoutCategoryReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testConfig := newIntegrationTestConfig()
+	if !testConfig.isConfigured() {
+		t.Skip(skipIntegrationTestsMessage)
+	}
+
+	adminClient := miniflux.NewClient(testConfig.testBaseURL, testConfig.testAdminUsername, testConfig.testAdminPassword)
+
+	regularTestUser, err := adminClient.CreateUser(testConfig.genRandomUsername(), testConfig.testRegularPassword, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminClient.DeleteUser(regularTestUser.ID)
+
+	regularUserClient := miniflux.NewClient(testConfig.testBaseURL, regularTestUser.Username, testConfig.testRegularPassword)
+	categories, err := regularUserClient.Categories()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, category := range categories {
+		if err := regularUserClient.DeleteCategory(category.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("REST API", func(t *testing.T) {
+		_, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{FeedURL: testConfig.testFeedURL})
+		if !errors.Is(err, miniflux.ErrBadRequest) {
+			t.Fatalf(`Expected a bad request error, got %v`, err)
+		}
+	})
+
+	t.Run("OPML import", func(t *testing.T) {
+		data := `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+    <body>
+        <outline title="Test" text="Test" xmlUrl="` + testConfig.testFeedURL + `"></outline>
+    </body>
+</opml>`
+
+		err := regularUserClient.Import(io.NopCloser(bytes.NewReader([]byte(data))))
+		if !errors.Is(err, miniflux.ErrBadRequest) {
+			t.Fatalf(`Expected a bad request error, got %v`, err)
+		}
+	})
+}
+
 func TestCreateFeedWithInexistingCategory(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1457,6 +1587,8 @@ func TestCreateFeedWithInexistingCategory(t *testing.T) {
 }
 
 func TestCreateFeedWithEmptyFeedURL(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1472,6 +1604,8 @@ func TestCreateFeedWithEmptyFeedURL(t *testing.T) {
 }
 
 func TestCreateFeedWithInvalidFeedURL(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1487,6 +1621,8 @@ func TestCreateFeedWithInvalidFeedURL(t *testing.T) {
 }
 
 func TestCreateDisabledFeed(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1521,6 +1657,8 @@ func TestCreateDisabledFeed(t *testing.T) {
 }
 
 func TestCreateFeedWithDisabledHTTPCache(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1555,6 +1693,8 @@ func TestCreateFeedWithDisabledHTTPCache(t *testing.T) {
 }
 
 func TestCreateFeedWithScraperRule(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1589,6 +1729,8 @@ func TestCreateFeedWithScraperRule(t *testing.T) {
 }
 
 func TestUpdateFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1626,6 +1768,8 @@ func TestUpdateFeedEndpoint(t *testing.T) {
 }
 
 func TestCannotHaveDuplicateFeedWhenUpdatingFeed(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1662,6 +1806,8 @@ func TestCannotHaveDuplicateFeedWhenUpdatingFeed(t *testing.T) {
 }
 
 func TestUpdateFeedWithInvalidCategory(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1694,6 +1840,8 @@ func TestUpdateFeedWithInvalidCategory(t *testing.T) {
 }
 
 func TestMarkFeedAsReadEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1733,6 +1881,8 @@ func TestMarkFeedAsReadEndpoint(t *testing.T) {
 }
 
 func TestFetchCountersEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1770,6 +1920,8 @@ func TestFetchCountersEndpoint(t *testing.T) {
 }
 
 func TestDeleteFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1798,6 +1950,8 @@ func TestDeleteFeedEndpoint(t *testing.T) {
 }
 
 func TestRefreshAllFeedsEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1819,6 +1973,8 @@ func TestRefreshAllFeedsEndpoint(t *testing.T) {
 }
 
 func TestRefreshFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1847,6 +2003,8 @@ func TestRefreshFeedEndpoint(t *testing.T) {
 }
 
 func TestGetFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1892,6 +2050,8 @@ func TestGetFeedEndpoint(t *testing.T) {
 }
 
 func TestGetFeedIcon(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1950,6 +2110,8 @@ func TestGetFeedIcon(t *testing.T) {
 }
 
 func TestGetFeedIconWithInexistingFeedID(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -1962,7 +2124,77 @@ func TestGetFeedIconWithInexistingFeedID(t *testing.T) {
 	}
 }
 
+func TestGetIconWithInexistingIconID(t *testing.T) {
+	t.Parallel()
+
+	testConfig := newIntegrationTestConfig()
+	if !testConfig.isConfigured() {
+		t.Skip(skipIntegrationTestsMessage)
+	}
+
+	client := miniflux.NewClient(testConfig.testBaseURL, testConfig.testAdminUsername, testConfig.testAdminPassword)
+	_, err := client.Icon(123456789)
+	if !errors.Is(err, miniflux.ErrNotFound) {
+		t.Fatalf(`Fetching an inexisting icon should return a "not found" error, got %v`, err)
+	}
+}
+
+func TestGetIconByIconIDFromAnotherUser(t *testing.T) {
+	t.Parallel()
+
+	testConfig := newIntegrationTestConfig()
+	if !testConfig.isConfigured() {
+		t.Skip(skipIntegrationTestsMessage)
+	}
+
+	adminClient := miniflux.NewClient(testConfig.testBaseURL, testConfig.testAdminUsername, testConfig.testAdminPassword)
+
+	// The owner subscribes to a feed, which fetches and stores its icon.
+	ownerUser, err := adminClient.CreateUser(testConfig.genRandomUsername(), testConfig.testRegularPassword, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminClient.DeleteUser(ownerUser.ID)
+
+	ownerClient := miniflux.NewClient(testConfig.testBaseURL, ownerUser.Username, testConfig.testRegularPassword)
+
+	feedID, err := ownerClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL: testConfig.testFeedURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ownerIcon, err := ownerClient.FeedIcon(feedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ownerIcon == nil {
+		t.Fatalf(`Invalid icon, got nil`)
+	}
+
+	// The owner can fetch its own icon by icon ID.
+	if _, err := ownerClient.Icon(ownerIcon.ID); err != nil {
+		t.Fatalf(`The owner should be able to fetch its own icon, got %v`, err)
+	}
+
+	// Another user without access to that feed must not be able to fetch the icon.
+	otherUser, err := adminClient.CreateUser(testConfig.genRandomUsername(), testConfig.testRegularPassword, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminClient.DeleteUser(otherUser.ID)
+
+	otherClient := miniflux.NewClient(testConfig.testBaseURL, otherUser.Username, testConfig.testRegularPassword)
+
+	if _, err := otherClient.Icon(ownerIcon.ID); !errors.Is(err, miniflux.ErrNotFound) {
+		t.Fatalf(`Fetching an icon owned by another user should return a "not found" error, got %v`, err)
+	}
+}
+
 func TestGetFeedsEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2004,6 +2236,8 @@ func TestGetFeedsEndpoint(t *testing.T) {
 }
 
 func TestGetCategoryFeedsEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2051,6 +2285,8 @@ func TestGetCategoryFeedsEndpoint(t *testing.T) {
 }
 
 func TestExportEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2085,6 +2321,8 @@ func TestExportEndpoint(t *testing.T) {
 }
 
 func TestImportEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2116,6 +2354,8 @@ func TestImportEndpoint(t *testing.T) {
 }
 
 func TestDiscoverSubscriptionsEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2141,6 +2381,8 @@ func TestDiscoverSubscriptionsEndpoint(t *testing.T) {
 }
 
 func TestDiscoverSubscriptionsWithInvalidURL(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2154,6 +2396,8 @@ func TestDiscoverSubscriptionsWithInvalidURL(t *testing.T) {
 }
 
 func TestDiscoverSubscriptionsWithNoSubscription(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2166,6 +2410,8 @@ func TestDiscoverSubscriptionsWithNoSubscription(t *testing.T) {
 }
 
 func TestGetAllFeedEntriesEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2215,6 +2461,8 @@ func TestGetAllFeedEntriesEndpoint(t *testing.T) {
 }
 
 func TestGetAllCategoryEntriesEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2270,6 +2518,8 @@ func TestGetAllCategoryEntriesEndpoint(t *testing.T) {
 }
 
 func TestGetAllEntriesEndpointWithFilter(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2317,6 +2567,23 @@ func TestGetAllEntriesEndpointWithFilter(t *testing.T) {
 		t.Fatalf(`Invalid title, got empty`)
 	}
 
+	emptyPage, err := regularUserClient.Entries(&miniflux.Filter{
+		FeedID: feedID,
+		Limit:  1,
+		Offset: feedEntries.Total,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(emptyPage.Entries) != 0 {
+		t.Fatalf(`Expected no entries beyond the final page, got %d`, len(emptyPage.Entries))
+	}
+
+	if emptyPage.Total != feedEntries.Total {
+		t.Fatalf(`Expected total %d beyond the final page, got %d`, feedEntries.Total, emptyPage.Total)
+	}
+
 	recentEntries, err := regularUserClient.Entries(&miniflux.Filter{Order: "published_at", Direction: "desc"})
 	if err != nil {
 		t.Fatal(err)
@@ -2357,6 +2624,8 @@ func TestGetAllEntriesEndpointWithFilter(t *testing.T) {
 }
 
 func TestGetGlobalEntriesEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2414,6 +2683,8 @@ func TestGetGlobalEntriesEndpoint(t *testing.T) {
 }
 
 func TestUpdateEnclosureEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2472,6 +2743,8 @@ func TestUpdateEnclosureEndpoint(t *testing.T) {
 }
 
 func TestGetEnclosureEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2526,6 +2799,8 @@ func TestGetEnclosureEndpoint(t *testing.T) {
 }
 
 func TestGetEntryEndpoints(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2590,6 +2865,8 @@ func TestGetEntryEndpoints(t *testing.T) {
 }
 
 func TestUpdateEntryStatusEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2632,6 +2909,8 @@ func TestUpdateEntryStatusEndpoint(t *testing.T) {
 }
 
 func TestUpdateEntriesStarredEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2695,6 +2974,8 @@ func TestUpdateEntriesStarredEndpoint(t *testing.T) {
 }
 
 func TestGetEntryIDsEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2929,6 +3210,8 @@ func TestGetEntryIDsEndpoint(t *testing.T) {
 }
 
 func TestUpdateEntryEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -2989,6 +3272,8 @@ func TestUpdateEntryEndpoint(t *testing.T) {
 }
 
 func TestToggleStarredEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -3031,6 +3316,8 @@ func TestToggleStarredEndpoint(t *testing.T) {
 }
 
 func TestSaveEntryEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -3064,6 +3351,8 @@ func TestSaveEntryEndpoint(t *testing.T) {
 }
 
 func TestFetchIntegrationsStatusEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -3090,6 +3379,8 @@ func TestFetchIntegrationsStatusEndpoint(t *testing.T) {
 }
 
 func TestFetchContentEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -3128,6 +3419,8 @@ func TestFetchContentEndpoint(t *testing.T) {
 }
 
 func TestFlushHistoryEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)
@@ -3174,6 +3467,8 @@ func TestFlushHistoryEndpoint(t *testing.T) {
 }
 
 func TestImportFeedEntryEndpoint(t *testing.T) {
+	t.Parallel()
+
 	testConfig := newIntegrationTestConfig()
 	if !testConfig.isConfigured() {
 		t.Skip(skipIntegrationTestsMessage)

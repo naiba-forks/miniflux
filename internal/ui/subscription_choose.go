@@ -39,6 +39,7 @@ func (h *handler) showChooseSubscriptionPage(w http.ResponseWriter, r *http.Requ
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 	view.Set("defaultUserAgent", config.Opts.HTTPClientUserAgent())
+	view.Set("hasProxyConfigured", config.Opts.HasHTTPClientProxyURLConfigured())
 
 	subscriptionForm := form.NewSubscriptionForm(r)
 	if validationErr := subscriptionForm.Validate(); validationErr != nil {
