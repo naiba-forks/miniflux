@@ -1666,4 +1666,16 @@ var migrations = [...]func(tx *sql.Tx) error{
 		`)
 		return err
 	},
+	// Append upstream migrations after released fork migrations to preserve upgrade order.
+	func(tx *sql.Tx) (err error) {
+		sql := `
+			ALTER TABLE integrations
+				ADD COLUMN gotify_enabled bool default 'f',
+				ADD COLUMN gotify_url text default '',
+				ADD COLUMN gotify_token text default '',
+				ADD COLUMN gotify_priority int default 0;
+		`
+		_, err = tx.Exec(sql)
+		return err
+	},
 }

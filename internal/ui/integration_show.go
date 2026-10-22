@@ -149,6 +149,10 @@ func (h *handler) showIntegrationPage(w http.ResponseWriter, r *http.Request) {
 		AIProviderURL:                    integration.AIProviderURL,
 		AIAPIKey:                         integration.AIAPIKey,
 		AIModel:                          integration.AIModel,
+		GotifyEnabled:                    integration.GotifyEnabled,
+		GotifyURL:                        integration.GotifyURL,
+		GotifyToken:                      integration.GotifyToken,
+		GotifyPriority:                   integration.GotifyPriority,
 	}
 
 	view := view.New(h.tpl, r)

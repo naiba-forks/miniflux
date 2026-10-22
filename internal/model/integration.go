@@ -131,4 +131,8 @@ type Integration struct {
 	AIProviderURL                    string
 	AIAPIKey                         string
 	AIModel                          string
+	GotifyEnabled                    bool
+	GotifyURL                        string
+	GotifyToken                      string
+	GotifyPriority                   int
 }

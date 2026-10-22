@@ -38,7 +38,7 @@ All features from upstream Miniflux are included. See the [official documentatio
 
 - Feed formats (Atom, RSS, JSON Feed), OPML import/export
 - Privacy & security (tracker removal, CSP, media proxy)
-- 25+ third-party integrations
+- 25+ third-party integrations, including [Gotify](https://gotify.net/)
 - Fever & Google Reader API compatibility
 - Passkeys, OAuth2, OpenID Connect authentication
 - Keyboard shortcuts, themes, responsive design

@@ -3,7 +3,7 @@
 ## Fork 新增模块（非上游）
 
 ### 1. AI 摘要系统 (`internal/integration/ai/`)
-- 导航栏 AI 数据：所有 50+ UI handler 必须设置 `showAIDigest` 和 `countAIDigest`（sed 批量添加，后新增 handler 需手动加）
+- 导航栏 AI 数据：所有 50+ UI handler 必须设置 `showAIDigest` 和 `countAIDigest`（新增 handler 也需设置）
 - 回填可停止：`StopBackfill()` 通过 `backfillStopSignals` sync.Map 通知 goroutine 退出
 - `storage/entry.go`: `IsAIEnabled()` 直查 integrations 表，`CountUnreadAIDigestEntries()` 用于导航计数
 
@@ -31,5 +31,4 @@
 - **合并上游**：必须用 `git fetch upstream --no-tags && git merge upstream/main`，禁止拉取上游 tag 污染本地
 - **CSP 限制**：`style-src 'nonce-xxx'` 会阻止 HTML 内联 `style=""` 属性，必须用 CSS class（如 `.initially-hidden`）控制初始可见性
 - 参数编号：`storage/feed.go` UpdateFeed 用到 $1-$49, CreateFeed 用到 $1-$39
-- 参数编号：`storage/integration.go` UpdateIntegration AI 字段在 $122-$125（$126 是 WHERE user_id）
-- gjson 依赖：`github.com/tidwall/gjson`（新增，goquery 是上游已有）
+- 参数编号：`storage/integration.go` UpdateIntegration AI 字段在 $122-$125，Gotify 字段在 $126-$129，WHERE user_id 使用 $130

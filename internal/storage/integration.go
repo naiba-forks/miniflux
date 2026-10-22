@@ -235,7 +235,11 @@ func (s *Storage) Integration(userID int64) (*model.Integration, error) {
 			ai_enabled,
 			ai_provider_url,
 			ai_api_key,
-			ai_model
+			ai_model,
+			gotify_enabled,
+			gotify_url,
+			gotify_token,
+			gotify_priority
 		FROM
 			integrations
 		WHERE
@@ -369,6 +373,10 @@ func (s *Storage) Integration(userID int64) (*model.Integration, error) {
 		&integration.AIProviderURL,
 		&integration.AIAPIKey,
 		&integration.AIModel,
+		&integration.GotifyEnabled,
+		&integration.GotifyURL,
+		&integration.GotifyToken,
+		&integration.GotifyPriority,
 	)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -510,9 +518,13 @@ func (s *Storage) UpdateIntegration(integration *model.Integration) error {
 			ai_enabled=$122,
 			ai_provider_url=$123,
 			ai_api_key=$124,
-			ai_model=$125
+			ai_model=$125,
+			gotify_enabled=$126,
+			gotify_url=$127,
+			gotify_token=$128,
+			gotify_priority=$129
 		WHERE
-			user_id=$126
+			user_id=$130
 	`
 	_, err := s.db.Exec(
 		query,
@@ -641,6 +653,10 @@ func (s *Storage) UpdateIntegration(integration *model.Integration) error {
 		integration.AIProviderURL,
 		integration.AIAPIKey,
 		integration.AIModel,
+		integration.GotifyEnabled,
+		integration.GotifyURL,
+		integration.GotifyToken,
+		integration.GotifyPriority,
 		integration.UserID,
 	)
 
