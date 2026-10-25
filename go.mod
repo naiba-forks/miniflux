@@ -14,6 +14,7 @@ require (
 	github.com/kaptinlin/jsonrepair v0.4.8
 	github.com/lib/pq v1.12.3
 	github.com/prometheus/client_golang v1.25.0
+	github.com/refraction-networking/utls v1.8.2
 	github.com/tdewolff/minify/v2 v2.24.21
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.47.0
@@ -28,6 +29,7 @@ require (
 	github.com/go-webauthn/x v0.3.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/ysmood/fetchup v0.2.3 // indirect

@@ -21,6 +21,11 @@ Fork Features
 - Pagination support for both HTML (regex) and JSON (gjson path) sources.
 - Feed source type selector: choose between RSS/Atom/JSON Feed or Web Scraper per subscription.
 
+### Browser TLS Handshake
+
+- Standard HTTPS fetching uses upstream [uTLS](https://github.com/refraction-networking/utls) with its Chrome ClientHello preset, including through HTTP, HTTPS, and SOCKS5 proxies.
+- Certificate validation, private-network restrictions, and the per-feed HTTP/2 setting still apply. HTTP/2 frames and HTTP headers are not browser-impersonated; this does not execute JavaScript or solve CAPTCHA challenges.
+
 ### JavaScript Rendering (Obscura)
 
 - Optional stealth headless browser rendering via [Obscura](https://github.com/h4ckf0r0day/obscura) for JavaScript-heavy websites.

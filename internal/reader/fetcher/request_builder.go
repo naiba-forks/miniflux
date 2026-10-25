@@ -289,7 +289,7 @@ func (r *RequestBuilder) ExecuteRequest(requestURL string) (*http.Response, erro
 		}
 	}
 
-	client.Transport = transport
+	client.Transport = &browserTLSTransport{base: transport, disableHTTP2: r.disableHTTP2}
 
 	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
