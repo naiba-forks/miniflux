@@ -25,14 +25,14 @@ ENV LISTEN_ADDR=0.0.0.0:8080
 # HTML/JS execution, so use Obscura's smaller no-render build with the full
 # stealth feature compiled in.
 ARG TARGETARCH
-ARG OBSCURA_VERSION=v0.2.1
+ARG OBSCURA_VERSION=v0.2.5
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tzdata tini nodejs curl \
     && rm -rf /var/lib/apt/lists/* \
     && ARCH=$(echo "${TARGETARCH}" | sed 's/amd64/x86_64/;s/arm64/aarch64/') \
     && case "${ARCH}" in \
-         x86_64) OBSCURA_SHA256=d3f6b73be9081e5f85f3d1069ffd66dd62f1265caddd54cb5431e9b4cceb1e4d ;; \
-         aarch64) OBSCURA_SHA256=500bf6fa74b802d120d04846f5c4f2f8933f71efcd4673005f61b08ecc1ddbfe ;; \
+         x86_64) OBSCURA_SHA256=7f7b23dbb40622784729e68be038f2893327bfab255eb6894dad47dd9b18cbd2 ;; \
+         aarch64) OBSCURA_SHA256=934e1deb8ed0f4bf98a11e7e23c4736b5a7e414f50ab17fc5495778fe25bf2e5 ;; \
          *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
        esac \
     && curl -fsSL -o /tmp/obscura.tar.gz \

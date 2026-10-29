@@ -133,7 +133,7 @@ func CreateFeed(store *storage.Storage, userID int64, feedCreationRequest *model
 	requestBuilder := fetcher.NewRequestBuilder().
 		WithUsernameAndPassword(feedCreationRequest.Username, feedCreationRequest.Password).
 		WithUserAgent(feedCreationRequest.UserAgent, config.Opts.HTTPClientUserAgent()).
-		WithCookie(feedCreationRequest.Cookie).
+		WithCookie(feedCreationRequest.Cookie, feedCreationRequest.FeedURL).
 		WithTimeout(config.Opts.HTTPClientTimeout()).
 		WithProxyRotator(proxyrotator.ProxyRotatorInstance).
 		WithCustomFeedProxyURL(feedCreationRequest.ProxyURL).
@@ -242,7 +242,7 @@ func RefreshFeed(store *storage.Storage, userID, feedID int64, forceRefresh bool
 	requestBuilder := fetcher.NewRequestBuilder().
 		WithUsernameAndPassword(originalFeed.Username, originalFeed.Password).
 		WithUserAgent(originalFeed.UserAgent, config.Opts.HTTPClientUserAgent()).
-		WithCookie(originalFeed.Cookie).
+		WithCookie(originalFeed.Cookie, originalFeed.FeedURL).
 		WithTimeout(config.Opts.HTTPClientTimeout()).
 		WithProxyRotator(proxyrotator.ProxyRotatorInstance).
 		WithCustomFeedProxyURL(originalFeed.ProxyURL).
@@ -508,7 +508,8 @@ func createWebScraperFeed(store *storage.Storage, userID int64, req *model.FeedC
 	requestBuilder := fetcher.NewRequestBuilder()
 	requestBuilder.WithUsernameAndPassword(req.Username, req.Password)
 	requestBuilder.WithUserAgent(req.UserAgent, config.Opts.HTTPClientUserAgent())
-	requestBuilder.WithCookie(req.Cookie)
+	// Web scraper feeds must scope cookies to their source site, just like RSS feeds.
+	requestBuilder.WithCookie(req.Cookie, req.FeedURL)
 	requestBuilder.WithTimeout(config.Opts.HTTPClientTimeout())
 	requestBuilder.WithProxyRotator(proxyrotator.ProxyRotatorInstance)
 	requestBuilder.WithCustomFeedProxyURL(req.ProxyURL)
