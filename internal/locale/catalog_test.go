@@ -97,6 +97,7 @@ func TestAllKeysHaveValue(t *testing.T) {
 	}
 }
 
+// New upstream locales must also include the fork's AI and Web Scraper keys.
 func TestMissingTranslations(t *testing.T) {
 	refLang := "en_US"
 	references, err := loadTranslationFile(refLang)
@@ -150,6 +151,7 @@ func TestTranslationFilePluralForms(t *testing.T) {
 		"ru_RU":            3,
 		"tr_TR":            2,
 		"uk_UA":            3,
+		"vi_VN":            1,
 		"zh_CN":            1,
 		"zh_TW":            1,
 	}
