@@ -66,7 +66,7 @@ func (t *browserTLSTransport) RoundTrip(request *http.Request) (*http.Response, 
 		cleanup()
 		return nil, err
 	}
-	response.Body = &browserTLSResponseBody{ReadCloser: response.Body, cleanup: cleanup}
+	response.Body = &browserTLSResponseBody{ReadCloser: response.Body, requestContext: request.Context(), cleanup: cleanup}
 	return response, nil
 }
 
@@ -201,7 +201,7 @@ func (t *browserTLSTransport) dialProxy(ctx context.Context, address string, pro
 		}
 		proxyConnection := tls.Client(connection, proxyTLSConfig)
 		if err := proxyConnection.HandshakeContext(ctx); err != nil {
-			return nil, err
+			return nil, connectionContextError(ctx, err)
 		}
 		connection = proxyConnection
 	}
@@ -217,14 +217,14 @@ func (t *browserTLSTransport) dialProxy(ctx context.Context, address string, pro
 		connectRequest.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(credentials)))
 	}
 	if err := connectRequest.Write(connection); err != nil {
-		return nil, err
+		return nil, connectionContextError(ctx, err)
 	}
 	// Bound the CONNECT headers before giving the buffered reader to TLS.
 	headerReader := &io.LimitedReader{R: connection, N: 1 << 20}
 	reader := bufio.NewReader(headerReader)
 	response, err := http.ReadResponse(reader, connectRequest)
 	if err != nil {
-		return nil, err
+		return nil, connectionContextError(ctx, err)
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("CONNECT tunnel: %s", response.Status)
@@ -233,6 +233,19 @@ func (t *browserTLSTransport) dialProxy(ctx context.Context, address string, pro
 	_ = connection.SetDeadline(time.Time{})
 	connected = true
 	return &browserTLSBufferedConnection{Conn: connection, reader: reader}, nil
+}
+
+// connectionContextError reports the context error when the request deadline or
+// cancellation ended a connection read/write. The deadline and the AfterFunc
+// close race each other; if the close wins, the raw error is "use of closed
+// network connection", which callers cannot classify as a timeout.
+// Return the context error unwrapped: net.OpError.Timeout() uses a direct type
+// assertion, so wrapping it with fmt.Errorf would hide Timeout() again.
+func connectionContextError(ctx context.Context, err error) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return contextErr
+	}
+	return err
 }
 
 type browserTLSProxyDialer struct {
@@ -258,13 +271,20 @@ func (c *browserTLSBufferedConnection) Read(buffer []byte) (int, error) {
 
 type browserTLSResponseBody struct {
 	io.ReadCloser
-	cleanup func()
+	requestContext context.Context
+	cleanup        func()
 }
 
 func (b *browserTLSResponseBody) Read(buffer []byte) (int, error) {
 	n, err := b.ReadCloser.Read(buffer)
 	if err != nil {
 		b.cleanup()
+		// The AfterFunc in RoundTrip closes the connection when the request
+		// context ends, so a timed-out read can surface as "use of closed
+		// network connection". Report the context error to keep Timeout().
+		if err != io.EOF {
+			err = connectionContextError(b.requestContext, err)
+		}
 	}
 	return n, err
 }
