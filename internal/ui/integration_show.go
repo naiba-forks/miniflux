@@ -166,5 +166,5 @@ func (h *handler) showIntegrationPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 
-	response.HTML(w, r, view.Render("integrations"))
+	view.HTML(w, r, "integrations")
 }

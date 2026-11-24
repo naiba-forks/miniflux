@@ -86,5 +86,5 @@ func (h *handler) showStarredCategoryEntryPage(w http.ResponseWriter, r *http.Re
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 	view.Set("hasSaveEntry", navMetadata.HasSaveEntry)
 
-	response.HTML(w, r, view.Render("entry"))
+	view.HTML(w, r, "entry")
 }

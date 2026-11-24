@@ -64,5 +64,5 @@ func (h *handler) showSearchPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 	view.Set("hasSaveEntry", navMetadata.HasSaveEntry)
 
-	response.HTML(w, r, view.Render("search"))
+	view.HTML(w, r, "search")
 }

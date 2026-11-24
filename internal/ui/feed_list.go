@@ -36,5 +36,5 @@ func (h *handler) showFeedsPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 
-	response.HTML(w, r, view.Render("feeds"))
+	view.HTML(w, r, "feeds")
 }

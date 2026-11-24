@@ -42,5 +42,5 @@ func (h *handler) showUsersPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 
-	response.HTML(w, r, view.Render("users"))
+	view.HTML(w, r, "users")
 }

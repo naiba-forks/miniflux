@@ -48,5 +48,5 @@ func (h *handler) showAboutPage(w http.ResponseWriter, r *http.Request) {
 
 	view.Set("obscura_process_count", headless.ObscuraProcessCount())
 
-	response.HTML(w, r, view.Render("about"))
+	view.HTML(w, r, "about")
 }

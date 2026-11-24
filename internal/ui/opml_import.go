@@ -28,5 +28,5 @@ func (h *handler) showImportPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 
-	response.HTML(w, r, view.Render("import"))
+	view.HTML(w, r, "import")
 }

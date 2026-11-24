@@ -47,5 +47,5 @@ func (h *handler) showEditCategoryPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 
-	response.HTML(w, r, view.Render("edit_category"))
+	view.HTML(w, r, "edit_category")
 }

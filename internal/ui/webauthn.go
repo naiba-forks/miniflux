@@ -305,7 +305,7 @@ func (h *handler) renameCredential(w http.ResponseWriter, r *http.Request) {
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 
-	response.HTML(w, r, view.Render("webauthn_rename"))
+	view.HTML(w, r, "webauthn_rename")
 }
 
 func (h *handler) saveCredential(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +345,7 @@ func (h *handler) saveCredential(w http.ResponseWriter, r *http.Request) {
 		v.Set("countErrorFeeds", navMetadata.CountErrorFeeds)
 		v.Set("showAIDigest", navMetadata.ShowAIDigest)
 		v.Set("countAIDigest", navMetadata.CountAIDigest)
-		response.HTML(w, r, v.Render("webauthn_rename"))
+		v.HTML(w, r, "webauthn_rename")
 		return
 	}
 

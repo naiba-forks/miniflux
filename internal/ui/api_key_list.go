@@ -35,5 +35,5 @@ func (h *handler) showAPIKeysPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("showAIDigest", navMetadata.ShowAIDigest)
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 
-	response.HTML(w, r, view.Render("api_keys"))
+	view.HTML(w, r, "api_keys")
 }

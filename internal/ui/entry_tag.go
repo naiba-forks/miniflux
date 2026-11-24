@@ -84,5 +84,5 @@ func (h *handler) showTagEntryPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 	view.Set("hasSaveEntry", navMetadata.HasSaveEntry)
 
-	response.HTML(w, r, view.Render("entry"))
+	view.HTML(w, r, "entry")
 }

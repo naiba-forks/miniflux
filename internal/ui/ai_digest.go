@@ -63,5 +63,5 @@ func (h *handler) showAIDigestPage(w http.ResponseWriter, r *http.Request) {
 	view.Set("countAIDigest", total)
 	view.Set("hasSaveEntry", navMetadata.HasSaveEntry)
 
-	response.HTML(w, r, view.Render("ai_digest"))
+	view.HTML(w, r, "ai_digest")
 }

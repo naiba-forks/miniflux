@@ -103,5 +103,5 @@ func (h *handler) showUnreadCategoryEntryPage(w http.ResponseWriter, r *http.Req
 	view.Set("countAIDigest", navMetadata.CountAIDigest)
 	view.Set("hasSaveEntry", navMetadata.HasSaveEntry)
 
-	response.HTML(w, r, view.Render("entry"))
+	view.HTML(w, r, "entry")
 }
