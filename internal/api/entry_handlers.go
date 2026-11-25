@@ -291,6 +291,48 @@ func (h *handler) saveEntryHandler(w http.ResponseWriter, r *http.Request) {
 	response.JSONAccepted(w, r)
 }
 
+func (h *handler) createSharedEntryHandler(w http.ResponseWriter, r *http.Request) {
+	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
+
+	shareCode, created, err := h.store.EntryShareCode(request.UserID(r), entryID)
+	if errors.Is(err, storage.ErrEntryNotFound) {
+		response.JSONNotFound(w, r)
+		return
+	} else if err != nil {
+		response.JSONServerError(w, r, err)
+		return
+	}
+
+	if created {
+		response.JSONCreated(w, r, &entryShareResponse{ShareCode: shareCode})
+	} else {
+		response.JSON(w, r, &entryShareResponse{ShareCode: shareCode})
+	}
+}
+
+func (h *handler) unshareEntryHandler(w http.ResponseWriter, r *http.Request) {
+	entryID := request.RouteInt64Param(r, "entryID")
+	if entryID == 0 {
+		response.JSONBadRequest(w, r, errors.New("invalid entry ID"))
+		return
+	}
+
+	err := h.store.UnshareEntry(request.UserID(r), entryID)
+	if errors.Is(err, storage.ErrEntryNotFound) {
+		response.JSONNotFound(w, r)
+		return
+	} else if err != nil {
+		response.JSONServerError(w, r, err)
+		return
+	}
+
+	response.NoContent(w, r)
+}
+
 func (h *handler) updateEntryHandler(w http.ResponseWriter, r *http.Request) {
 	var entryUpdateRequest model.EntryUpdateRequest
 	if err := json_parser.NewDecoder(r.Body).Decode(&entryUpdateRequest); err != nil {

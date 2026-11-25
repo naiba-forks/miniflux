@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -3553,6 +3554,126 @@ func TestToggleStarredEndpoint(t *testing.T) {
 
 	if !entry.Starred {
 		t.Fatalf(`The entry should be starred`)
+	}
+}
+
+func TestShareEntryEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := newIntegrationTestConfig()
+	if !testConfig.isConfigured() {
+		t.Skip(skipIntegrationTestsMessage)
+	}
+
+	adminClient := miniflux.NewClient(testConfig.testBaseURL, testConfig.testAdminUsername, testConfig.testAdminPassword)
+
+	regularTestUser, err := adminClient.CreateUser(testConfig.genRandomUsername(), testConfig.testRegularPassword, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminClient.DeleteUser(regularTestUser.ID)
+
+	regularUserClient := miniflux.NewClient(testConfig.testBaseURL, regularTestUser.Username, testConfig.testRegularPassword)
+
+	feedID, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL: testConfig.testFeedURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := regularUserClient.FeedEntries(feedID, &miniflux.Filter{Limit: 1})
+	if err != nil {
+		t.Fatalf(`Failed to get entries: %v`, err)
+	}
+
+	entryID := result.Entries[0].ID
+
+	entryBeforeShare, err := regularUserClient.Entry(entryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shareCode, err := regularUserClient.ShareEntry(entryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shareCode) < 8 {
+		t.Fatal(`The entry should have a share code`)
+	}
+
+	existingShareCode, err := regularUserClient.ShareEntry(entryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if existingShareCode != shareCode {
+		t.Fatalf(`Sharing an entry twice should return the same code, got %q and %q`, shareCode, existingShareCode)
+	}
+
+	entryAfterShare, err := regularUserClient.Entry(entryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if entryAfterShare.ShareCode != shareCode {
+		t.Fatal(`The entry share code should match`)
+	}
+
+	if !entryAfterShare.ChangedAt.After(entryBeforeShare.ChangedAt) {
+		t.Fatalf(`Sharing should update the entry change date, got %v before and %v after`, entryBeforeShare.ChangedAt, entryAfterShare.ChangedAt)
+	}
+
+	if err := regularUserClient.UnshareEntry(entryID); err != nil {
+		t.Fatal(err)
+	}
+
+	entryAfterUnshare, err := regularUserClient.Entry(entryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if entryAfterUnshare.ShareCode != "" {
+		t.Fatal(`The share code should be deleted`)
+	}
+
+	if !entryAfterUnshare.ChangedAt.After(entryAfterShare.ChangedAt) {
+		t.Fatalf(`Unsharing should update the entry change date, got %v before and %v after`, entryAfterShare.ChangedAt, entryAfterUnshare.ChangedAt)
+	}
+
+	nonExistingEntryID := int64(math.MaxInt64)
+	if _, err = regularUserClient.ShareEntry(nonExistingEntryID); !errors.Is(err, miniflux.ErrNotFound) {
+		t.Fatalf(`Expected Not Found when sharing non existent entry: %v`, err)
+	}
+	if err = regularUserClient.UnshareEntry(nonExistingEntryID); !errors.Is(err, miniflux.ErrNotFound) {
+		t.Fatalf(`Expected Not Found when unsharing non existent entry: %v`, err)
+	}
+
+	otherTestUser, err := adminClient.CreateUser(testConfig.genRandomUsername(), testConfig.testRegularPassword, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminClient.DeleteUser(otherTestUser.ID)
+
+	otherUserClient := miniflux.NewClient(testConfig.testBaseURL, otherTestUser.Username, testConfig.testRegularPassword)
+
+	otherFeedID, err := otherUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL: testConfig.testFeedURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err = otherUserClient.FeedEntries(otherFeedID, &miniflux.Filter{Limit: 1})
+	if err != nil {
+		t.Fatalf(`Failed to get entries: %v`, err)
+	}
+
+	otherUserEntryID := result.Entries[0].ID
+	if _, err = regularUserClient.ShareEntry(otherUserEntryID); !errors.Is(err, miniflux.ErrNotFound) {
+		t.Fatalf(`Expected Not Found when sharing other user's entry: %v`, err)
+	}
+	if err = regularUserClient.UnshareEntry(otherUserEntryID); !errors.Is(err, miniflux.ErrNotFound) {
+		t.Fatalf(`Expected Not Found when unsharing other user's entry: %v`, err)
 	}
 }
 

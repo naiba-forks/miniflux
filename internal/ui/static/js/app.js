@@ -187,30 +187,28 @@ function setIconAndLabelElement(parentElement, iconName, labelText) {
 }
 
 /**
- * Set the button to a loading state and return a clone of the original button element.
+ * Set the button to a loading state and return its original child nodes.
  *
  * @param {Element} buttonElement - The button element to set to loading state.
- * @return {Element} The original button element cloned before modification.
+ * @return {Node[]} The child nodes of the button before modification.
  */
 function setButtonToLoadingState(buttonElement) {
-    const originalButtonElement = buttonElement.cloneNode(true);
+    const originalChildNodes = Array.from(buttonElement.childNodes);
 
-    buttonElement.textContent = "";
-    buttonElement.appendChild(createIconLabelElement(buttonElement.dataset.labelLoading));
+    buttonElement.replaceChildren(createIconLabelElement(buttonElement.dataset.labelLoading));
 
-    return originalButtonElement;
+    return originalChildNodes;
 }
 
 /**
  * Restore the button to its original state.
  *
  * @param {Element} buttonElement The button element to restore.
- * @param {Element} originalButtonElement The original button element to restore from.
+ * @param {Node[]} originalChildNodes The child nodes returned by setButtonToLoadingState.
  * @returns {void}
  */
-function restoreButtonState(buttonElement, originalButtonElement) {
-    buttonElement.textContent = "";
-    buttonElement.appendChild(originalButtonElement);
+function restoreButtonState(buttonElement, originalChildNodes) {
+    buttonElement.replaceChildren(...originalChildNodes);
 }
 
 /**
@@ -762,6 +760,8 @@ function handleStarAction(element) {
     });
 }
 
+let articleHTMLPolicy;
+
 /**
  * Handle fetching the original content of an entry.
  *
@@ -771,23 +771,34 @@ function handleFetchOriginalContentAction() {
     if (isListView()) return;
 
     const buttonElement = document.querySelector(":is(a, button)[data-fetch-content-entry]");
-    if (!buttonElement) return;
+    if (!buttonElement || buttonElement.dataset.loading) return;
 
-    const originalButtonElement = setButtonToLoadingState(buttonElement);
+    buttonElement.dataset.loading = "true";
+    const originalChildNodes = setButtonToLoadingState(buttonElement);
 
     sendPOSTRequest(buttonElement.dataset.fetchContentUrl).then((response) => {
-        restoreButtonState(buttonElement, originalButtonElement);
+        return response.json().then((data) => {
+            if (!response.ok) {
+                throw new Error(data.error_message || response.statusText);
+            }
 
-        response.json().then((data) => {
             if (data.content && data.reading_time) {
-                const ttpolicy = trustedTypes.createPolicy('html', {createHTML: html => html});
-                document.querySelector(".entry-content").innerHTML = ttpolicy.createHTML(data.content);
+                if (!articleHTMLPolicy) {
+                    articleHTMLPolicy = trustedTypes.createPolicy('html', {createHTML: html => html});
+                }
+                document.querySelector(".entry-content").innerHTML = articleHTMLPolicy.createHTML(data.content);
                 const entryReadingtimeElement = document.querySelector(".entry-reading-time");
                 if (entryReadingtimeElement) {
                     entryReadingtimeElement.textContent = data.reading_time;
                 }
             }
         });
+    }).catch((error) => {
+        console.error("Unable to fetch original content:", error);
+        showToastNotification("", error.message);
+    }).finally(() => {
+        restoreButtonState(buttonElement, originalChildNodes);
+        delete buttonElement.dataset.loading;
     });
 }
 
