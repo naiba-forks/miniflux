@@ -31,6 +31,9 @@ var (
 	errFeedNotFound     = errors.New("googlereader: feed not found")
 	errCategoryNotFound = errors.New("googlereader: category not found")
 	errSimultaneously   = fmt.Errorf("googlereader: %s and %s should not be supplied simultaneously", keptUnreadStreamSuffix, readStreamSuffix)
+
+	errInvalidFeedStream   = errors.New("googlereader: invalid feed stream")
+	errInvalidSubscription = errors.New("googlereader: invalid subscription")
 )
 
 // NewHandler returns an http.Handler that handles Google Reader API calls.
@@ -196,28 +199,28 @@ func (h *greaderHandler) editTagHandler(w http.ResponseWriter, r *http.Request) 
 	)
 
 	if err := r.ParseForm(); err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	addTags, err := getStreams(r.PostForm[paramTagsAdd], userID)
 	if err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 	removeTags, err := getStreams(r.PostForm[paramTagsRemove], userID)
 	if err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 	if len(addTags) == 0 && len(removeTags) == 0 {
 		err = errors.New("googlreader: add or/and remove tags should be supplied")
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 	tags, err := checkAndSimplifyTags(addTags, removeTags)
 	if err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
@@ -371,11 +374,7 @@ func (h *greaderHandler) quickAddHandler(w http.ResponseWriter, r *http.Request)
 	category := Stream{NoStream, ""}
 	newFeed, err := subscribe(toSubscribe, category, "", h.store, userID)
 	if err != nil {
-		if errors.Is(err, errCategoryNotFound) {
-			response.JSONBadRequest(w, r, err)
-		} else {
-			response.JSONServerError(w, r, err)
-		}
+		sendErrorResponse(w, r, err)
 		return
 	}
 
@@ -396,11 +395,20 @@ func (h *greaderHandler) quickAddHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func getFeed(stream Stream, store *storage.Storage, userID int64) (*model.Feed, error) {
-	feedID, err := strconv.ParseInt(stream.ID, 10, 64)
+	feedID, err := getFeedID(stream)
 	if err != nil {
 		return nil, err
 	}
 	return store.FeedByID(userID, feedID)
+}
+
+// getFeedID returns the ID of a feed stream, and rejects other stream types.
+func getFeedID(stream Stream) (int64, error) {
+	feedID, err := strconv.ParseInt(stream.ID, 10, 64)
+	if stream.Type != FeedStream || err != nil {
+		return 0, fmt.Errorf("%w: %s", errInvalidFeedStream, stream)
+	}
+	return feedID, nil
 }
 
 func getOrCreateCategory(streamCategory Stream, store *storage.Storage, userID int64) (*model.Category, error) {
@@ -434,7 +442,7 @@ func subscribe(newFeed Stream, category Stream, title string, store *storage.Sto
 	}
 	verr := validator.ValidateFeedCreation(store, userID, &feedRequest)
 	if verr != nil {
-		return nil, verr.Error()
+		return nil, fmt.Errorf("%w: %w", errInvalidSubscription, verr.Error())
 	}
 
 	created, localizedError := mff.CreateFeed(store, userID, &feedRequest)
@@ -456,13 +464,18 @@ func subscribe(newFeed Stream, category Stream, title string, store *storage.Sto
 }
 
 func unsubscribe(streams []Stream, store *storage.Storage, userID int64) error {
+	// Check every stream before removing any feed.
+	feedIDs := make([]int64, 0, len(streams))
 	for _, stream := range streams {
-		feedID, err := strconv.ParseInt(stream.ID, 10, 64)
+		feedID, err := getFeedID(stream)
 		if err != nil {
 			return err
 		}
-		err = store.RemoveFeed(userID, feedID)
-		if err != nil {
+		feedIDs = append(feedIDs, feedID)
+	}
+
+	for _, feedID := range feedIDs {
+		if err := store.RemoveFeed(userID, feedID); err != nil {
 			return err
 		}
 	}
@@ -567,27 +580,19 @@ func (h *greaderHandler) editSubscriptionHandler(w http.ResponseWriter, r *http.
 	case "subscribe":
 		_, err := subscribe(streamIds[0], newLabel, title, h.store, userID)
 		if err != nil {
-			if errors.Is(err, errCategoryNotFound) {
-				response.JSONBadRequest(w, r, err)
-			} else {
-				response.JSONServerError(w, r, err)
-			}
+			sendErrorResponse(w, r, err)
 			return
 		}
 	case "unsubscribe":
 		err := unsubscribe(streamIds, h.store, userID)
 		if err != nil {
-			response.JSONServerError(w, r, err)
+			sendErrorResponse(w, r, err)
 			return
 		}
 	case "edit":
 		if title != "" {
 			if err := rename(streamIds[0], title, h.store, userID); err != nil {
-				if errors.Is(err, errFeedNotFound) || errors.Is(err, errEmptyFeedTitle) {
-					response.JSONBadRequest(w, r, err)
-				} else {
-					response.JSONServerError(w, r, err)
-				}
+				sendErrorResponse(w, r, err)
 				return
 			}
 		}
@@ -599,11 +604,7 @@ func (h *greaderHandler) editSubscriptionHandler(w http.ResponseWriter, r *http.
 			}
 
 			if err := move(streamIds[0], newLabel, h.store, userID); err != nil {
-				if errors.Is(err, errFeedNotFound) || errors.Is(err, errCategoryNotFound) {
-					response.JSONBadRequest(w, r, err)
-				} else {
-					response.JSONServerError(w, r, err)
-				}
+				sendErrorResponse(w, r, err)
 				return
 			}
 		}
@@ -634,13 +635,13 @@ func (h *greaderHandler) streamItemContentsHandler(w http.ResponseWriter, r *htt
 
 	err := r.ParseForm()
 	if err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
 	requestModifiers, err := parseStreamFilterFromRequest(r)
 	if err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
@@ -780,6 +781,10 @@ func (h *greaderHandler) disableTagHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	err = h.store.RemoveAndReplaceCategoriesByName(userID, titles)
+	if errors.Is(err, storage.ErrLastCategory) {
+		response.JSONBadRequest(w, r, err)
+		return
+	}
 	if err != nil {
 		response.JSONServerError(w, r, err)
 		return
@@ -981,7 +986,7 @@ func (h *greaderHandler) streamItemIDsHandler(w http.ResponseWriter, r *http.Req
 
 	rm, err := parseStreamFilterFromRequest(r)
 	if err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
@@ -993,7 +998,7 @@ func (h *greaderHandler) streamItemIDsHandler(w http.ResponseWriter, r *http.Req
 	)
 
 	if len(rm.Streams) != 1 {
-		response.JSONServerError(w, r, errors.New("googlereader: only one stream type expected"))
+		response.JSONBadRequest(w, r, errors.New("googlereader: only one stream type expected"))
 		return
 	}
 	switch rm.Streams[0].Type {
@@ -1012,7 +1017,7 @@ func (h *greaderHandler) streamItemIDsHandler(w http.ResponseWriter, r *http.Req
 			slog.String("user_agent", r.UserAgent()),
 			slog.Any("stream_type", rm.Streams[0].Type),
 		)
-		response.JSONServerError(w, r, fmt.Errorf("googlereader: unknown stream type %s", rm.Streams[0].Type))
+		response.JSONBadRequest(w, r, fmt.Errorf("googlereader: unknown stream type %s", rm.Streams[0].Type))
 	}
 }
 
@@ -1133,7 +1138,7 @@ func getItemRefsAndContinuation(builder storage.EntryQueryBuilder, rm requestMod
 func (h *greaderHandler) handleFeedStreamHandler(w http.ResponseWriter, r *http.Request, rm requestModifiers) {
 	feedID, err := strconv.ParseInt(rm.Streams[0].ID, 10, 64)
 	if err != nil {
-		response.JSONServerError(w, r, err)
+		response.JSONBadRequest(w, r, err)
 		return
 	}
 
@@ -1250,7 +1255,8 @@ func checkAndSimplifyTags(addTags []Stream, removeTags []Stream) (map[StreamType
 	for _, s := range addTags {
 		switch s.Type {
 		case ReadStream:
-			if _, ok := tags[KeptUnreadStream]; ok {
+			// kept-unread is stored as ReadStream=false.
+			if read, ok := tags[ReadStream]; ok && !read {
 				return nil, errSimultaneously
 			}
 			tags[ReadStream] = true

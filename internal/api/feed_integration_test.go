@@ -1,0 +1,544 @@
+// SPDX-FileCopyrightText: Copyright The Miniflux Authors. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package api_test
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"testing"
+
+	miniflux "miniflux.app/v2/client"
+	"miniflux.app/v2/internal/http/server/servertest"
+)
+
+func TestCreateFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+	category, err := regularUserClient.CreateCategory("My category")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feedID, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL:    fixture.FeedURL,
+		CategoryID: category.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if feedID == 0 {
+		t.Errorf(`Invalid feedID, got "%v"`, feedID)
+	}
+}
+
+func TestCannotCreateDuplicatedFeed(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	if feedID == 0 {
+		t.Fatalf(`Invalid feedID, got "%v"`, feedID)
+	}
+
+	_, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL: fixture.FeedURL,
+	})
+	if !errors.Is(err, miniflux.ErrBadRequest) {
+		t.Fatalf(`Duplicated feeds should not be allowed, got %v`, err)
+	}
+}
+
+func TestFeedCreationWithoutCategoryReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+	categories, err := regularUserClient.Categories()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, category := range categories {
+		if err := regularUserClient.DeleteCategory(category.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("REST API", func(t *testing.T) {
+		_, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{FeedURL: fixture.FeedURL})
+		if !errors.Is(err, miniflux.ErrBadRequest) {
+			t.Fatalf(`Expected a bad request error, got %v`, err)
+		}
+	})
+
+	t.Run("OPML import", func(t *testing.T) {
+		data := `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+    <body>
+        <outline title="Test" text="Test" xmlUrl="` + fixture.FeedURL + `"></outline>
+    </body>
+</opml>`
+
+		err := regularUserClient.Import(io.NopCloser(bytes.NewReader([]byte(data))))
+		if !errors.Is(err, miniflux.ErrBadRequest) {
+			t.Fatalf(`Expected a bad request error, got %v`, err)
+		}
+	})
+}
+
+func TestCreateFeedWithInexistingCategory(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	_, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL:    fixture.FeedURL,
+		CategoryID: 123456789,
+	})
+
+	if !errors.Is(err, miniflux.ErrBadRequest) {
+		t.Fatalf(`Creating a feed with an inexisting category should raise an error, got %v`, err)
+	}
+}
+
+func TestCreateFeedWithEmptyFeedURL(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+
+	client := testConfig.newAdminClient()
+	_, err := client.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL: "",
+	})
+	if !errors.Is(err, miniflux.ErrBadRequest) {
+		t.Fatalf(`Creating a feed with an empty feed URL should raise an error, got %v`, err)
+	}
+}
+
+func TestCreateFeedWithInvalidFeedURL(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+
+	client := testConfig.newAdminClient()
+	_, err := client.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL: "invalid_feed_url",
+	})
+	if !errors.Is(err, miniflux.ErrBadRequest) {
+		t.Fatalf(`Creating a feed with an invalid feed URL should raise an error, got %v`, err)
+	}
+}
+
+func TestCreateDisabledFeed(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL:  fixture.FeedURL,
+		Disabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feed, err := regularUserClient.Feed(feedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !feed.Disabled {
+		t.Fatalf(`The feed should be disabled`)
+	}
+}
+
+func TestCreateFeedWithDisabledHTTPCache(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL:         fixture.FeedURL,
+		IgnoreHTTPCache: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feed, err := regularUserClient.Feed(feedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !feed.IgnoreHTTPCache {
+		t.Fatalf(`The feed should ignore the HTTP cache`)
+	}
+}
+
+func TestCreateFeedWithScraperRule(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL:      fixture.FeedURL,
+		ScraperRules: "article",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feed, err := regularUserClient.Feed(feedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if feed.ScraperRules != "article" {
+		t.Fatalf(`The feed should have the scraper rules set to "article"`)
+	}
+}
+
+func TestUpdateFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	feedUpdateRequest := &miniflux.FeedModificationRequest{
+		FeedURL: new("https://example.org/feed.xml"),
+	}
+
+	updatedFeed, err := regularUserClient.UpdateFeed(feedID, feedUpdateRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if updatedFeed.FeedURL != "https://example.org/feed.xml" {
+		t.Fatalf(`Invalid feed URL, got "%v"`, updatedFeed.FeedURL)
+	}
+}
+
+func TestCannotHaveDuplicateFeedWhenUpdatingFeed(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+	otherFixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	fixture.Subscribe(t, regularUserClient)
+
+	feedID, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL: otherFixture.FeedURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feedUpdateRequest := &miniflux.FeedModificationRequest{
+		FeedURL: new(fixture.FeedURL),
+	}
+
+	if _, err := regularUserClient.UpdateFeed(feedID, feedUpdateRequest); !errors.Is(err, miniflux.ErrBadRequest) {
+		t.Fatalf(`Duplicated feeds should not be allowed, got %v`, err)
+	}
+}
+
+func TestUpdateFeedWithInvalidCategory(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	feedUpdateRequest := &miniflux.FeedModificationRequest{
+		CategoryID: new(int64(123456789)),
+	}
+
+	if _, err := regularUserClient.UpdateFeed(feedID, feedUpdateRequest); !errors.Is(err, miniflux.ErrBadRequest) {
+		t.Fatalf(`Updating a feed with an inexisting category should raise an error, got %v`, err)
+	}
+}
+
+func TestFeedRuleValidation(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := servertest.NewFeedFixture(t).Subscribe(t, regularUserClient)
+
+	testCases := []struct {
+		name   string
+		create miniflux.FeedCreationRequest
+		update miniflux.FeedModificationRequest
+	}{
+		{
+			// Missing the second backslash in the search term makes this an invalid Go
+			// string literal, which the rewrite rule parser must reject.
+			name:   "malformed rewrite rule",
+			create: miniflux.FeedCreationRequest{RewriteRules: `replace("\d+"|"x")`},
+			update: miniflux.FeedModificationRequest{RewriteRules: new(`replace("\d+"|"x")`)},
+		},
+		{
+			// The rule is well formed, but "[invalid" is an unterminated character class,
+			// so the search term is not a valid regexp.
+			name:   "invalid URL rewrite rule",
+			create: miniflux.FeedCreationRequest{UrlRewriteRules: `rewrite("[invalid"|"x")`},
+			update: miniflux.FeedModificationRequest{UrlRewriteRules: new(`rewrite("[invalid"|"x")`)},
+		},
+		{
+			// cascadia does not support a relative selector inside :has().
+			name:   "invalid rewrite rule selector",
+			create: miniflux.FeedCreationRequest{RewriteRules: `remove("div:has(> p)")`},
+			update: miniflux.FeedModificationRequest{RewriteRules: new(`remove("div:has(> p)")`)},
+		},
+		{
+			// cascadia does not support a relative selector inside :has().
+			name:   "invalid scraper rules",
+			create: miniflux.FeedCreationRequest{ScraperRules: `div:has(> p)`},
+			update: miniflux.FeedModificationRequest{ScraperRules: new(`div:has(> p)`)},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The URL must not be subscribed yet: a duplicate feed is rejected before its rules are checked.
+			tc.create.FeedURL = servertest.NewFeedFixture(t).FeedURL
+			if _, err := regularUserClient.CreateFeed(&tc.create); !errors.Is(err, miniflux.ErrBadRequest) {
+				t.Errorf(`Creating a feed should reject the %s, got %v`, tc.name, err)
+			}
+
+			if _, err := regularUserClient.UpdateFeed(feedID, &tc.update); !errors.Is(err, miniflux.ErrBadRequest) {
+				t.Errorf(`Updating a feed should reject the %s, got %v`, tc.name, err)
+			}
+		})
+	}
+}
+
+func TestMarkFeedAsReadEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	if err := regularUserClient.MarkFeedAsRead(feedID); err != nil {
+		t.Fatal(err)
+	}
+
+	results := listFeedEntries(t, regularUserClient, feedID, nil)
+
+	for _, entry := range results.Entries {
+		if entry.Status != miniflux.EntryStatusRead {
+			t.Errorf(`Status for entry %d was %q instead of %q`, entry.ID, entry.Status, miniflux.EntryStatusRead)
+		}
+	}
+}
+
+func TestFetchCountersEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	counters, err := regularUserClient.FetchCounters()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if value, ok := counters.ReadCounters[feedID]; ok && value != 0 {
+		t.Errorf(`Invalid read counter, got %d`, value)
+	}
+
+	if value, ok := counters.UnreadCounters[feedID]; !ok || value == 0 {
+		t.Errorf(`Invalid unread counter, got %d`, value)
+	}
+}
+
+func TestDeleteFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	if err := regularUserClient.DeleteFeed(feedID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRefreshAllFeedsEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	if err := regularUserClient.RefreshAllFeeds(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRefreshFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	if err := regularUserClient.RefreshFeed(feedID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := regularUserClient.ForceRefreshFeed(feedID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetFeedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	feed, err := regularUserClient.Feed(feedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if feed.ID != feedID {
+		t.Fatalf(`Invalid feedID, got %d`, feed.ID)
+	}
+
+	if feed.FeedURL != fixture.FeedURL {
+		t.Fatalf(`Invalid feed URL, got %q`, feed.FeedURL)
+	}
+
+	if feed.SiteURL != fixture.WebsiteURL {
+		t.Fatalf(`Invalid site URL, got %q`, feed.SiteURL)
+	}
+
+	if feed.Title != servertest.FeedTitle {
+		t.Fatalf(`Invalid title, got %q`, feed.Title)
+	}
+}
+
+func TestGetFeedsEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	feedID := fixture.Subscribe(t, regularUserClient)
+
+	feeds, err := regularUserClient.Feeds()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(feeds) != 1 {
+		t.Fatalf(`Invalid number of feeds, got %d`, len(feeds))
+	}
+
+	if feeds[0].ID != feedID {
+		t.Fatalf(`Invalid feedID, got %d`, feeds[0].ID)
+	}
+
+	if feeds[0].FeedURL != fixture.FeedURL {
+		t.Fatalf(`Invalid feed URL, got %q`, feeds[0].FeedURL)
+	}
+}
+
+func TestGetCategoryFeedsEndpoint(t *testing.T) {
+	t.Parallel()
+
+	testConfig := requireIntegrationTestConfig(t)
+	fixture := servertest.NewFeedFixture(t)
+
+	regularUserClient, _ := testConfig.newRegularUser(t)
+
+	category, err := regularUserClient.CreateCategory("My category")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feedID, err := regularUserClient.CreateFeed(&miniflux.FeedCreationRequest{
+		FeedURL:    fixture.FeedURL,
+		CategoryID: category.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	feeds, err := regularUserClient.CategoryFeeds(category.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(feeds) != 1 {
+		t.Fatalf(`Invalid number of feeds, got %d`, len(feeds))
+	}
+
+	if feeds[0].ID != feedID {
+		t.Fatalf(`Invalid feedID, got %d`, feeds[0].ID)
+	}
+
+	if feeds[0].FeedURL != fixture.FeedURL {
+		t.Fatalf(`Invalid feed URL, got %q`, feeds[0].FeedURL)
+	}
+}

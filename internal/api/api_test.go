@@ -5,9 +5,14 @@ package api // import "miniflux.app/v2/internal/api"
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"runtime"
+	"slices"
+	"strconv"
 	"testing"
 
 	"miniflux.app/v2/internal/config"
@@ -95,41 +100,147 @@ func TestVersionHandler(t *testing.T) {
 func TestGetEntryIDsHandlerRequiresAuthentication(t *testing.T) {
 	handler := NewHandler(nil, nil)
 
-	r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids", nil)
-	w := httptest.NewRecorder()
+	for _, query := range []string{"", "?starred=maybe", "?status=invalid"} {
+		t.Run(query, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids"+query, nil)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
 
-	handler.ServeHTTP(w, r)
-
-	if got := w.Code; got != http.StatusUnauthorized {
-		t.Fatalf(`Unexpected status code, got %d instead of %d`, got, http.StatusUnauthorized)
+			if got := w.Code; got != http.StatusUnauthorized {
+				t.Fatalf(`Unexpected status code, got %d instead of %d`, got, http.StatusUnauthorized)
+			}
+		})
 	}
 }
 
-func TestGetEntryIDsHandlerRejectsInvalidStarredParam(t *testing.T) {
-	handler := NewHandler(nil, nil)
+func TestValidateEntryIDsFilters(t *testing.T) {
+	for _, query := range []string{
+		"", "status=read&status=unread&status=read", "tags=one&tags=two",
+		"starred=false&globally_visible=true&order=category_title&direction=desc",
+		"feed_id=1&category_id=1&before_entry_id=1&after_entry_id=1",
+		"before=0&after=0&published_before=0&published_after=0&changed_before=0&changed_after=0",
+		"before_entry_id=9223372036854775807&after_entry_id=9223372036854775807",
+		"limit=invalid&offset=-1", // Legacy pagination parsing remains independent.
+	} {
+		t.Run("valid/"+query, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids?"+query, nil)
+			if err := validateEntryIDsFilters(r); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := parseEntryFilters(r, 0, 0); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 
-	r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids?starred=maybe", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, r)
-
-	// Unauthenticated request should be rejected before param validation.
-	if got := w.Code; got != http.StatusUnauthorized {
-		t.Fatalf(`Unexpected status code, got %d instead of %d`, got, http.StatusUnauthorized)
+	for _, name := range []string{
+		"feed_id", "category_id", "before_entry_id", "after_entry_id",
+		"before", "after", "published_before", "published_after", "changed_before", "changed_after",
+	} {
+		for _, value := range []string{"", "invalid", "-1", "1.5", "9223372036854775808"} {
+			t.Run("invalid/"+name+"/"+value, func(t *testing.T) {
+				r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids?"+url.Values{name: {value}}.Encode(), nil)
+				if err := validateEntryIDsFilters(r); err == nil {
+					t.Fatal("Expected invalid numeric parameter to be rejected")
+				}
+			})
+		}
 	}
 }
 
-func TestGetEntryIDsHandlerRejectsInvalidStatusParam(t *testing.T) {
-	handler := NewHandler(nil, nil)
+func TestValidateEntryIDsFiltersRejectsZeroIDs(t *testing.T) {
+	for _, name := range []string{"feed_id", "category_id", "before_entry_id", "after_entry_id"} {
+		t.Run(name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids?"+name+"=0", nil)
+			if err := validateEntryIDsFilters(r); err == nil {
+				t.Fatal("Expected an explicit zero ID to be rejected")
+			}
+		})
+	}
+}
 
-	r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids?status=invalid", nil)
-	w := httptest.NewRecorder()
+func TestValidateEntryIDsFiltersRejectsMalformedQueryStrings(t *testing.T) {
+	for _, query := range []string{
+		"feed_id=%zz", "status=unread;status=read",
+	} {
+		t.Run(query, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/v1/entries/ids?"+query, nil)
+			if err := validateEntryIDsFilters(r); err == nil {
+				t.Fatal("Expected malformed query parameters to be rejected")
+			}
+		})
+	}
+}
 
-	handler.ServeHTTP(w, r)
+func TestParseEntryFiltersRejectsValuesPostgreSQLCannotAccept(t *testing.T) {
+	queries := []string{"search=%00", "search=%ff", "tags=%00", "tags=%ff", "tags=one&tags=%ff"}
+	for _, name := range []string{"before", "after", "published_before", "published_after", "changed_before", "changed_after"} {
+		queries = append(queries, name+"=9223372036854775807", name+"="+strconv.FormatInt(maxEntryFilterTimestamp, 10))
+	}
+	for _, query := range queries {
+		t.Run(query, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/v1/entries?"+query, nil)
+			if _, err := parseEntryFilters(r, 0, 0); err == nil {
+				t.Fatal("Expected the value to be rejected")
+			}
+		})
+	}
 
-	// Unauthenticated request should be rejected before param validation.
-	if got := w.Code; got != http.StatusUnauthorized {
-		t.Fatalf(`Unexpected status code, got %d instead of %d`, got, http.StatusUnauthorized)
+	r := httptest.NewRequest(http.MethodGet, "/v1/entries?before="+strconv.FormatInt(maxEntryFilterTimestamp-1, 10)+"&search=caf%C3%A9", nil)
+	if _, err := parseEntryFilters(r, 0, 0); err != nil {
+		t.Fatalf("Expected the last valid timestamp and UTF-8 search text to be accepted: %v", err)
+	}
+}
+
+func TestParseEntryFiltersPreservesEndpointCompatibility(t *testing.T) {
+	for _, test := range []struct {
+		routeFeedID     int64
+		routeCategoryID int64
+		query           string
+		feedID          int64
+		categoryID      int64
+		starred         *bool
+		globallyVisible bool
+	}{
+		{query: "feed_id=12&category_id=20", feedID: 12, categoryID: 20},
+		{query: "feed_id=invalid&category_id=-1"},
+		{query: "feed_id=0&category_id=0"},
+		// Route IDs scope the endpoint: the query string cannot replace or clear them.
+		{routeFeedID: 11, query: "", feedID: 11},
+		{routeFeedID: 11, query: "feed_id=12", feedID: 11},
+		{routeFeedID: 11, query: "feed_id=0", feedID: 11},
+		{routeFeedID: 11, query: "category_id=20", feedID: 11, categoryID: 20},
+		{routeCategoryID: 10, query: "category_id=20", categoryID: 10},
+		{routeCategoryID: 10, query: "category_id=0", categoryID: 10},
+		{routeCategoryID: 10, query: "feed_id=12", feedID: 12, categoryID: 10},
+		{query: "starred=1", starred: new(true)},
+		{query: "starred=0", starred: new(false)},
+		{query: "starred=invalid"},
+		{query: "globally_visible=invalid", globallyVisible: true},
+		{query: "globally_visible=false"},
+	} {
+		t.Run(fmt.Sprintf("feed=%d/category=%d/%s", test.routeFeedID, test.routeCategoryID, test.query), func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/v1/entries?"+test.query, nil)
+			filters, err := parseEntryFilters(r, test.routeFeedID, test.routeCategoryID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if filters.feedID != test.feedID || filters.categoryID != test.categoryID || filters.globallyVisible != test.globallyVisible {
+				t.Fatalf("Unexpected filters: %+v", filters)
+			}
+			if !reflect.DeepEqual(filters.starred, test.starred) {
+				t.Fatalf("Unexpected starred filter: %v", filters.starred)
+			}
+		})
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/v1/entries?status=read&status=unread&status=read&tags=one&tags=two", nil)
+	filters, err := parseEntryFilters(r, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(filters.statuses, []string{"read", "unread", "read"}) || !slices.Equal(filters.tags, []string{"one", "two"}) {
+		t.Fatalf("Unexpected list filters: %+v", filters)
 	}
 }
 
